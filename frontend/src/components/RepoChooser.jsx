@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { authHeaders } from '../auth'
+import { authHeaders, useAuth } from '../auth'
 
 function FolderIcon({ className }) {
   return (
@@ -21,16 +21,33 @@ function timeAgo(dateStr) {
 }
 
 export default function RepoChooser({ onSelect }) {
+  const { isAuthenticated } = useAuth()
   const [repos, setRepos] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setLoading(false)
+      setError('Please log in to view your repositories')
+      return
+    }
+    
     let cancelled = false
-    fetch('/github/repos', { headers: authHeaders() })
+    const headers = authHeaders()
+    if (!headers.Authorization) {
+      setLoading(false)
+      setError('Authentication token missing. Please log in again.')
+      return
+    }
+    
+    fetch('/github/repos', { headers })
       .then(async (res) => {
         if (!res.ok) {
-          const data = await res.json()
+          const data = await res.json().catch(() => ({}))
+          if (res.status === 401) {
+            throw new Error('Authentication failed. Please log in again.')
+          }
           throw new Error(data.detail || 'Failed to fetch repos')
         }
         return res.json()
@@ -39,7 +56,7 @@ export default function RepoChooser({ onSelect }) {
       .catch((err) => { if (!cancelled) setError(err.message) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [])
+  }, [isAuthenticated])
 
   if (loading) {
     return (

@@ -94,7 +94,7 @@ class GraphResponse(BaseModel):
 # --- Endpoints ---
 
 @app.post("/ingest", response_model=IngestResponse)
-def ingest(req: IngestRequest, _user: User = Depends(get_current_user)):
+def ingest(req: IngestRequest, user: User = Depends(get_current_user)):
     """Clone a repo, chunk files, embed, and store."""
     try:
         repo_id, local_path = clone_repo(req.url)
@@ -119,7 +119,7 @@ def ingest(req: IngestRequest, _user: User = Depends(get_current_user)):
 
 
 @app.get("/graph/{repo_id}", response_model=GraphResponse)
-def graph(repo_id: str, _user: User = Depends(get_current_user)):
+def graph(repo_id: str, user: User = Depends(get_current_user)):
     """Return file nodes + import edges for the repo."""
     data = _load_graph(repo_id)
     if not data:
@@ -143,7 +143,7 @@ def graph(repo_id: str, _user: User = Depends(get_current_user)):
 
 
 @app.post("/query", response_model=QueryResponse)
-def query(req: QueryRequest, _user: User = Depends(get_current_user)):
+def query(req: QueryRequest, user: User = Depends(get_current_user)):
     """RAG: retrieve relevant chunks → generate answer with citations."""
     try:
         chunks = query_chunks(req.repo_id, req.question)

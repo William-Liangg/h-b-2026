@@ -34,7 +34,7 @@ def verify_password(password: str, hashed: str) -> bool:
 
 def create_token(user_id: int, email: str) -> str:
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),  # PyJWT requires sub to be a string
         "email": email,
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRY_HOURS),
     }
@@ -50,10 +50,10 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:
-        raise HTTPException(401, "Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(401, "Invalid token")
-    user = db.query(User).filter(User.id == payload["sub"]).first()
+        raise HTTPException(401, "Token expired. Please log in again.")
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(401, f"Invalid token: {str(e)}")
+    user = db.query(User).filter(User.id == int(payload["sub"])).first()
     if not user:
         raise HTTPException(401, "User not found")
     return user
