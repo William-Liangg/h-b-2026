@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { authHeaders } from '../auth'
+import { USE_MOCKS } from '../mocks/useMockMode'
+import { mockQueryResponse } from '../mocks/mockData'
 
 export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
   const [messages, setMessages] = useState([])
@@ -20,6 +22,18 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
     setInput('')
     setMessages((prev) => [...prev, { role: 'user', content: question }])
     setLoading(true)
+
+    // MOCK MODE: Return mock response after brief delay
+    if (USE_MOCKS) {
+      await new Promise((r) => setTimeout(r, 500)) // Simulate thinking
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: mockQueryResponse.answer, citations: mockQueryResponse.citations },
+      ])
+      onCitations?.(mockQueryResponse.citations || [])
+      setLoading(false)
+      return
+    }
 
     try {
       const res = await fetch('/query', {

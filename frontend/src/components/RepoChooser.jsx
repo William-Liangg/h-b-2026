@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { authHeaders } from '../auth'
+import { USE_MOCKS } from '../mocks/useMockMode'
+import { mockRepos } from '../mocks/mockData'
 
 function FolderIcon({ className }) {
   return (
@@ -26,6 +28,13 @@ export default function RepoChooser({ onSelect }) {
   const [error, setError] = useState('')
 
   useEffect(() => {
+    // MOCK MODE: Use mock repos
+    if (USE_MOCKS) {
+      setRepos(mockRepos)
+      setLoading(false)
+      return
+    }
+
     let cancelled = false
     fetch('/github/repos', { headers: authHeaders() })
       .then(async (res) => {
