@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from auth import get_current_user, router as auth_router
 from config import CLONE_DIR, IMPORTANCE_THRESHOLD
 from database import User, init_db
-from embeddings import query_chunks, store_chunks
+from embeddings import collection_has_data, query_chunks, store_chunks
 from llm import analyze_repo_files, generate_answer, generate_onboarding_path
 from parser import chunk_file, clone_repo, extract_edges, repo_id_from_url, walk_files
 
@@ -59,6 +59,7 @@ app.include_router(auth_router)
 
 class IngestRequest(BaseModel):
     url: str
+    force: bool = False
 
 class IngestResponse(BaseModel):
     repo_id: str
@@ -108,6 +109,19 @@ def ingest(req: IngestRequest, _user: User = Depends(get_current_user)):
     """Clone a repo, chunk files, embed, AI-analyze — streamed via SSE."""
 
     def generate() -> Generator[str, None, None]:
+        # Check cache: skip full pipeline if already ingested
+        rid = repo_id_from_url(req.url)
+        cached = _load_graph(rid)
+        if not req.force and cached and cached.get("file_analyses") and collection_has_data(rid):
+            yield _sse("progress", {"step": "pathing", "message": "Using cached analysis"})
+            yield _sse("done", {
+                "repo_id": rid,
+                "files": len(cached.get("files", [])),
+                "chunks": 0,
+                "cached": True,
+            })
+            return
+
         # Step 1: Clone
         yield _sse("progress", {"step": "cloning", "message": "Cloning repository..."})
         try:

@@ -14,6 +14,15 @@ def get_collection(repo_id: str):
     return _client.get_or_create_collection(name=f"repo_{repo_id}", metadata={"hnsw:space": "cosine"})
 
 
+def collection_has_data(repo_id: str) -> bool:
+    """Check if a Chroma collection exists and has documents."""
+    try:
+        coll = _client.get_collection(name=f"repo_{repo_id}")
+        return coll.count() > 0
+    except Exception:
+        return False
+
+
 def embed_texts(texts: list[str]) -> list[list[float]]:
     """Batch-embed texts respecting rate limits."""
     all_embeddings = []
