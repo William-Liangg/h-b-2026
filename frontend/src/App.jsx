@@ -227,46 +227,62 @@ function Dashboard() {
 
     // Screen 3: Repo chooser (default after login)
     return (
-      <div className="flex-1 overflow-auto px-8 py-10">
-        <div className="max-w-4xl mx-auto space-y-8">
+      <div className="flex-1 overflow-auto bg-zinc-950 px-8 py-12">
+        <div className="max-w-5xl mx-auto space-y-10">
           <div>
-            <h2 className="text-lg font-semibold text-slate-200 mb-4">Choose a repo</h2>
-            <RepoChooser onSelect={(url) => startIngest(url)} />
+            <h2 className="text-2xl font-bold text-white mb-2">Select a repository</h2>
+            <p className="text-sm text-zinc-500">Choose a repo to analyze or paste a URL below</p>
+          </div>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+            <form
+              onSubmit={(e) => { e.preventDefault(); if (manualUrl.trim()) startIngest(manualUrl.trim()) }}
+              className="flex gap-3"
+            >
+              <input
+                type="text"
+                value={manualUrl}
+                onChange={(e) => setManualUrl(e.target.value)}
+                placeholder="https://github.com/owner/repo"
+                className="flex-1 h-12 px-4 bg-zinc-800 border border-zinc-700 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition-colors"
+              />
+              <button
+                type="submit"
+                className="h-12 px-6 bg-cyan-500 hover:bg-cyan-400 text-zinc-950 text-sm font-semibold rounded-xl transition-colors"
+              >
+                Analyze
+              </button>
+            </form>
           </div>
           <div className="relative">
-            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-700" /></div>
-            <div className="relative flex justify-center"><span className="bg-slate-900 px-3 text-sm text-slate-500">or paste a URL</span></div>
+            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-zinc-800" /></div>
+            <div className="relative flex justify-center"><span className="bg-zinc-950 px-4 text-sm text-zinc-600">or choose from your repos</span></div>
           </div>
-          <form
-            onSubmit={(e) => { e.preventDefault(); if (manualUrl.trim()) startIngest(manualUrl.trim()) }}
-            className="flex gap-3"
-          >
-            <input
-              type="text"
-              value={manualUrl}
-              onChange={(e) => setManualUrl(e.target.value)}
-              placeholder="https://github.com/owner/repo"
-              className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-            />
-            <button
-              type="submit"
-              className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium rounded transition-colors"
-            >
-              Analyze
-            </button>
-          </form>
+          <RepoChooser onSelect={(url) => startIngest(url)} />
         </div>
       </div>
     )
   }
 
   return (
-    <div className="h-screen flex flex-col">
-      <div className="flex items-center bg-slate-800 border-b border-slate-700">
-        <IngestBar onIngest={startIngest} disabled={ingesting} />
-        <div className="flex items-center gap-3 px-4">
-          <span className="text-xs text-slate-400">{email}</span>
-          <button onClick={logout} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
+    <div className="h-screen flex flex-col" style={{ fontFamily: "'Manrope', sans-serif" }}>
+      <div className="flex items-center justify-between bg-zinc-950 border-b border-zinc-800 px-5 h-14">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-cyan-500 flex items-center justify-center text-zinc-950 font-bold text-sm">A</div>
+            <span className="text-white font-semibold text-sm">Atlas</span>
+          </div>
+          {repoId && (
+            <button
+              onClick={() => { setRepoId(null); setGraphData(null); setOnboardingSteps([]) }}
+              className="text-xs text-zinc-500 hover:text-zinc-300 border border-zinc-800 rounded-lg px-3 py-1.5 hover:border-zinc-600 transition-colors"
+            >
+              Switch repo
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="text-xs text-zinc-500">{email}</span>
+          <button onClick={logout} className="text-xs text-zinc-500 hover:text-white transition-colors">
             Logout
           </button>
         </div>
