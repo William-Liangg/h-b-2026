@@ -1,0 +1,45 @@
+{
+  "files": [
+    "frontend/src/App.jsx",
+    "backend/llm.py",
+    "backend/config.py",
+    "backend/embeddings.py",
+    "README.md",
+    "backend/database.py",
+    "backend/main.py",
+    "backend/auth.py"
+  ],
+  "edges": [
+    {
+      "source": "frontend/src/App.jsx",
+      "target": "backend/llm.py"
+    },
+    {
+      "source": "backend/llm.py",
+      "target": "backend/config.py"
+    },
+    {
+      "source": "backend/config.py",
+      "target": "backend/embeddings.py"
+    },
+    {
+      "source": "backend/embeddings.py",
+      "target": "README.md"
+    },
+    {
+      "source": "README.md",
+      "target": "backend/database.py"
+    },
+    {
+      "source": "backend/database.py",
+      "target": "backend/main.py"
+    },
+    {
+      "source": "backend/main.py",
+      "target": "backend/auth.py"
+    }
+  ],
+  "root": "/mock/mock_repo_123",
+  "file_analyses": {},
+  "onboarding_path": []
+}

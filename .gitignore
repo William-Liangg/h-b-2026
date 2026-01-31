@@ -31,6 +31,7 @@ build/
 __pycache__/
 *.pyc
 venv/
+.venv/
 backend/.env.local
 .env
 .env.local

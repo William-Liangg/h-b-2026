@@ -34,7 +34,7 @@ def verify_password(password: str, hashed: str) -> bool:
 
 def create_token(user_id: int, email: str) -> str:
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),  # Convert to string for JWT compatibility
         "email": email,
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRY_HOURS),
     }
@@ -53,7 +53,9 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
         raise HTTPException(401, "Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(401, "Invalid token")
-    user = db.query(User).filter(User.id == payload["sub"]).first()
+    # Convert sub back to integer for database query
+    user_id = int(payload["sub"])
+    user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(401, "User not found")
     return user
@@ -116,15 +118,21 @@ def github_callback(code: str, db: Session = Depends(get_db)):
         raise HTTPException(500, "GitHub OAuth not configured")
 
     # Exchange code for access token
-    token_resp = httpx.post(
-        "https://github.com/login/oauth/access_token",
-        json={
-            "client_id": GITHUB_CLIENT_ID,
-            "client_secret": GITHUB_CLIENT_SECRET,
-            "code": code,
-        },
-        headers={"Accept": "application/json"},
-    )
+    try:
+        token_resp = httpx.post(
+            "https://github.com/login/oauth/access_token",
+            json={
+                "client_id": GITHUB_CLIENT_ID,
+                "client_secret": GITHUB_CLIENT_SECRET,
+                "code": code,
+            },
+            headers={"Accept": "application/json"},
+            timeout=10.0,  # 10 second timeout
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(504, "GitHub OAuth request timed out. Please try again.")
+    except httpx.RequestError as e:
+        raise HTTPException(502, f"Failed to connect to GitHub OAuth: {e}")
     token_data = token_resp.json()
     access_token = token_data.get("access_token")
     if not access_token:
@@ -132,19 +140,33 @@ def github_callback(code: str, db: Session = Depends(get_db)):
         raise HTTPException(400, f"GitHub OAuth failed: {error}")
 
     # Fetch user info
-    gh_user = httpx.get(
-        "https://api.github.com/user",
-        headers={"Authorization": f"Bearer {access_token}"},
-    ).json()
+    try:
+        gh_user_resp = httpx.get(
+            "https://api.github.com/user",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10.0,
+        )
+        gh_user = gh_user_resp.json()
+    except httpx.TimeoutException:
+        raise HTTPException(504, "GitHub API request timed out. Please try again.")
+    except httpx.RequestError as e:
+        raise HTTPException(502, f"Failed to connect to GitHub: {e}")
     github_id = str(gh_user.get("id", ""))
     if not github_id:
         raise HTTPException(400, "Could not retrieve GitHub user info")
 
     # Fetch primary email
-    emails = httpx.get(
-        "https://api.github.com/user/emails",
-        headers={"Authorization": f"Bearer {access_token}"},
-    ).json()
+    try:
+        emails_resp = httpx.get(
+            "https://api.github.com/user/emails",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10.0,
+        )
+        emails = emails_resp.json()
+    except httpx.TimeoutException:
+        raise HTTPException(504, "GitHub API request timed out. Please try again.")
+    except httpx.RequestError as e:
+        raise HTTPException(502, f"Failed to connect to GitHub: {e}")
     primary_email = next((e["email"] for e in emails if e.get("primary")), None)
     if not primary_email:
         primary_email = gh_user.get("email") or f"{github_id}@github.oauth"
