@@ -4,11 +4,13 @@ import json
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from auth import get_current_user, router as auth_router
 from config import CLONE_DIR
+from database import User, init_db
 from embeddings import query_chunks, store_chunks
 from llm import generate_answer
 from parser import chunk_file, clone_repo, extract_edges, repo_id_from_url, walk_files
@@ -41,11 +43,13 @@ def _load_graph(repo_id: str) -> dict | None:
 async def lifespan(app: FastAPI):
     os.makedirs(CLONE_DIR, exist_ok=True)
     os.makedirs(_GRAPH_CACHE_DIR, exist_ok=True)
+    init_db()
     yield
 
 
 app = FastAPI(title="Atlas", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.include_router(auth_router)
 
 
 # --- Models ---
@@ -89,7 +93,7 @@ class GraphResponse(BaseModel):
 # --- Endpoints ---
 
 @app.post("/ingest", response_model=IngestResponse)
-def ingest(req: IngestRequest):
+def ingest(req: IngestRequest, _user: User = Depends(get_current_user)):
     """Clone a repo, chunk files, embed, and store."""
     try:
         repo_id, local_path = clone_repo(req.url)
@@ -114,7 +118,7 @@ def ingest(req: IngestRequest):
 
 
 @app.get("/graph/{repo_id}", response_model=GraphResponse)
-def graph(repo_id: str):
+def graph(repo_id: str, _user: User = Depends(get_current_user)):
     """Return file nodes + import edges for the repo."""
     data = _load_graph(repo_id)
     if not data:
@@ -138,7 +142,7 @@ def graph(repo_id: str):
 
 
 @app.post("/query", response_model=QueryResponse)
-def query(req: QueryRequest):
+def query(req: QueryRequest, _user: User = Depends(get_current_user)):
     """RAG: retrieve relevant chunks → generate answer with citations."""
     try:
         chunks = query_chunks(req.repo_id, req.question)
@@ -161,7 +165,7 @@ def query(req: QueryRequest):
 
 
 @app.get("/source/{repo_id}")
-def get_source(repo_id: str, file: str, start: int = 1, end: int = -1):
+def get_source(repo_id: str, file: str, start: int = 1, end: int = -1, _user: User = Depends(get_current_user)):
     """Return source lines for a file in the repo."""
     data = _load_graph(repo_id)
     repo_path = data["root"] if data else os.path.join(CLONE_DIR, repo_id)

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { authHeaders } from '../auth'
 
 export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
   const [messages, setMessages] = useState([])
@@ -21,7 +22,7 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
     try {
       const res = await fetch('/query', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ repo_id: repoId, question }),
       })
       const data = await res.json()

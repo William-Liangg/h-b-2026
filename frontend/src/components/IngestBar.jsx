@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { authHeaders } from '../auth'
 
 export default function IngestBar({ onIngested }) {
   const [url, setUrl] = useState('')
@@ -13,7 +14,7 @@ export default function IngestBar({ onIngested }) {
     try {
       const res = await fetch('/ingest', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ url: url.trim() }),
       })
       if (!res.ok) {
@@ -31,7 +32,7 @@ export default function IngestBar({ onIngested }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-center gap-3 px-4 py-3 bg-slate-800 border-b border-slate-700">
+    <form onSubmit={handleSubmit} className="flex-1 flex items-center gap-3 px-4 py-3">
       <span className="text-lg font-bold text-cyan-400 tracking-wide">ATLAS</span>
       <input
         type="text"
