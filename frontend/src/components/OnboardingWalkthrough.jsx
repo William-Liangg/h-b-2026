@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { authHeaders } from '../auth'
+import { USE_MOCKS } from '../mocks/useMockMode'
+import { mockOnboardingSteps } from '../mocks/mockData'
 
 export default function OnboardingWalkthrough({ repoId, onHighlight, onNodeClick }) {
   const [steps, setSteps] = useState([])
@@ -9,6 +11,15 @@ export default function OnboardingWalkthrough({ repoId, onHighlight, onNodeClick
 
   useEffect(() => {
     if (!repoId) return
+
+    // MOCK MODE: Use mock onboarding steps
+    if (USE_MOCKS) {
+      setSteps(mockOnboardingSteps)
+      setCurrentStep(0)
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     fetch(`/onboarding/${repoId}`, { headers: authHeaders() })
       .then(async (res) => {

@@ -29,7 +29,7 @@ ANALYSIS_MAX_LINES = 150          # max lines to read per file for analysis
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/atlas")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./atlas.db")
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = 24

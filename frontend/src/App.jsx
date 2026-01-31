@@ -8,8 +8,13 @@ import GraphPanel from './components/GraphPanel'
 import ChatPanel from './components/ChatPanel'
 import SourcePanel from './components/SourcePanel'
 import OnboardingWalkthrough from './components/OnboardingWalkthrough'
+import OnboardingGraph from './components/OnboardingGraph'
 import LoginPage from './pages/LoginPage'
 import SignupPage from './pages/SignupPage'
+
+// Mock mode for fast frontend iteration
+import { USE_MOCKS } from './mocks/useMockMode'
+import { MOCK_REPO_ID, mockGraphData, mockSourceView, mockOnboardingSteps } from './mocks/mockData'
 
 function Dashboard() {
   const { email, logout } = useAuth()
@@ -18,6 +23,7 @@ function Dashboard() {
   const [highlightedFiles, setHighlightedFiles] = useState([])
   const [sourceView, setSourceView] = useState(null)
   const [manualUrl, setManualUrl] = useState('')
+  const [onboardingSteps, setOnboardingSteps] = useState([])
 
   // Ingest progress state
   const [ingesting, setIngesting] = useState(false)
@@ -27,6 +33,15 @@ function Dashboard() {
 
   const startIngest = useCallback(async (url) => {
     if (!url.trim() || ingesting) return
+
+    // MOCK MODE: Skip API calls, instantly load mock data
+    if (USE_MOCKS) {
+      setGraphData(mockGraphData)
+      setRepoId(MOCK_REPO_ID)
+      setOnboardingSteps(mockOnboardingSteps)
+      return
+    }
+
     setIngesting(true)
     setIngestStep('cloning')
     setIngestMessage('Starting...')
@@ -95,6 +110,13 @@ function Dashboard() {
 
   const handleNodeClick = useCallback(async (fileId) => {
     if (!repoId) return
+
+    // MOCK MODE: Use mock source view
+    if (USE_MOCKS) {
+      setSourceView({ ...mockSourceView, file: fileId })
+      return
+    }
+
     const res = await fetch(`/source/${repoId}?file=${encodeURIComponent(fileId)}`, { headers: authHeaders() })
     if (res.ok) {
       const data = await res.json()
@@ -132,6 +154,7 @@ function Dashboard() {
     if (repoId) {
       return (
         <div className="flex-1 flex min-h-0">
+          {/* Left sidebar: Step-by-step walkthrough */}
           <div className="w-72 border-r border-slate-700 flex flex-col min-h-0 bg-slate-900/50">
             <OnboardingWalkthrough
               repoId={repoId}
@@ -139,13 +162,15 @@ function Dashboard() {
               onNodeClick={handleNodeClick}
             />
           </div>
+          {/* Center: Obsidian-style onboarding graph */}
           <div className="flex-1 border-r border-slate-700">
-            <GraphPanel
-              data={graphData}
+            <OnboardingGraph
+              steps={onboardingSteps}
               highlightedFiles={highlightedFiles}
               onNodeClick={handleNodeClick}
             />
           </div>
+          {/* Right sidebar: Chat + Source */}
           <div className="w-[400px] flex flex-col min-h-0">
             <div className="flex-1 min-h-0 border-b border-slate-700">
               <ChatPanel
