@@ -188,4 +188,4 @@ def github_callback(code: str, db: Session = Depends(get_db)):
 
     token = create_token(user.id, user.email)
     from urllib.parse import urlencode
-    return RedirectResponse(f"http://localhost:5173?{urlencode({'token': token, 'email': user.email})}")
+    return RedirectResponse(f"http://localhost:5173/app?{urlencode({'token': token, 'email': user.email})}")
