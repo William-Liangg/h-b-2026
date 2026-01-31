@@ -138,15 +138,15 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-zinc-950" style={{ fontFamily: "'Manrope', sans-serif" }}>
       {/* Tab Bar */}
-      <div className="flex items-center border-b border-slate-700 overflow-x-auto">
+      <div className="flex items-center border-b border-zinc-800 overflow-x-auto">
         <button
           onClick={() => setActiveTab('chat')}
           className={`px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors shrink-0 ${
             activeTab === 'chat'
-              ? 'text-cyan-400 border-b-2 border-cyan-400 bg-slate-800/50'
-              : 'text-slate-500 hover:text-slate-300'
+              ? 'text-cyan-400 border-b-2 border-cyan-400 bg-zinc-900/50'
+              : 'text-zinc-500 hover:text-zinc-300'
           }`}
         >
           Ask Atlas
@@ -160,8 +160,8 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
                 onClick={() => setActiveTab(tabId)}
                 className={`px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
                   isActive
-                    ? 'text-cyan-400 border-b-2 border-cyan-400 bg-slate-800/50'
-                    : 'text-slate-500 hover:text-slate-300'
+                    ? 'text-cyan-400 border-b-2 border-cyan-400 bg-zinc-900/50'
+                    : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
                 Chunks {parseInt(messageIndex) + 1} ({chunks.length})
@@ -173,7 +173,6 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
                   delete newTabs[messageIndex]
                   setOpenChunksTabs(newTabs)
                   if (activeTab === tabId) {
-                    // If closing the active tab, switch to chat or another chunks tab
                     const remainingTabs = Object.keys(newTabs)
                     if (remainingTabs.length > 0) {
                       setActiveTab(`chunks-${remainingTabs[0]}`)
@@ -182,7 +181,7 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
                     }
                   }
                 }}
-                className="px-1 py-1 text-xs text-slate-500 hover:text-slate-300"
+                className="px-1 py-1 text-xs text-zinc-500 hover:text-zinc-300"
                 title="Close chunks tab"
               >
                 ×
@@ -191,7 +190,7 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
           )
         })}
         {activeTab === 'chat' && messages.length > 0 && messages[messages.length - 1]?.outputHash && (
-          <span className="ml-auto text-[10px] normal-case font-mono text-slate-500 px-3 shrink-0">
+          <span className="ml-auto text-[10px] normal-case font-mono text-zinc-600 px-3 shrink-0">
             Hash: {messages[messages.length - 1].outputHash.slice(0, 8)}...
           </span>
         )}
@@ -204,15 +203,15 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
             if (!chunksData) return null
             return (
               <div className="space-y-2">
-                <div className="text-xs font-semibold text-slate-400 mb-2">
+                <div className="text-xs font-semibold text-zinc-400 mb-2">
                   Retrieved Chunks from Response {messageIndex + 1} ({chunksData.length})
                 </div>
                 {chunksData.map((chunk, j) => (
-                  <div key={j} className="p-3 bg-slate-800/50 rounded border border-slate-700">
+                  <div key={j} className="p-3 bg-zinc-900 rounded-xl border border-zinc-800">
                     <div className="text-cyan-400 font-mono text-xs mb-2 font-semibold">
                       {chunk.file || chunk.file_path}:{chunk.start_line || chunk.start}-{chunk.end_line || chunk.end}
                     </div>
-                    <div className="text-slate-200 text-sm font-mono whitespace-pre-wrap overflow-x-auto bg-slate-900/50 p-2 rounded border border-slate-700/50 max-h-96 overflow-y-auto">
+                    <div className="text-zinc-200 text-sm font-mono whitespace-pre-wrap overflow-x-auto bg-zinc-950 p-2 rounded-lg border border-zinc-800 max-h-96 overflow-y-auto">
                       <pre className="m-0 font-mono text-xs leading-relaxed">{chunk.text}</pre>
                     </div>
                   </div>
@@ -224,9 +223,9 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
           <>
             {messages.map((msg, i) => {
           const isUser = msg.role === 'user'
-          
+
           return (
-            <div key={i} className={`text-sm ${isUser ? 'text-slate-300' : 'text-slate-100'}`}>
+            <div key={i} className={`text-sm ${isUser ? 'text-zinc-300' : 'text-zinc-100'}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1">
                   <span className={`font-semibold ${isUser ? 'text-cyan-400' : 'text-emerald-400'}`}>
@@ -237,18 +236,16 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
                     <div className="mt-2 space-y-2">
                       <button
                         onClick={() => {
-                          // Add or update chunks tab for this message
                           if (msg.chunks && msg.chunks.length > 0) {
                             setOpenChunksTabs(prev => ({
                               ...prev,
                               [i]: msg.chunks
                             }))
-                            // Switch to this chunks tab
                             setActiveTab(`chunks-${i}`)
                           }
                         }}
                         disabled={!msg.chunks || msg.chunks.length === 0}
-                        className="text-xs px-2 py-1 bg-slate-700/50 hover:bg-slate-700 disabled:bg-slate-800/30 disabled:text-slate-500 disabled:cursor-not-allowed text-slate-300 rounded border border-slate-600 transition-colors"
+                        className="text-xs px-2 py-1 bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-900 disabled:text-zinc-600 disabled:cursor-not-allowed text-zinc-300 rounded-lg border border-zinc-700 transition-colors"
                       >
                         {openChunksTabs[i] ? 'View' : 'Show'} Retrieved Chunks ({msg.chunks?.length || 0})
                       </button>
@@ -396,9 +393,9 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
                           }
                           
                           return (
-                            <div className="text-[10px] space-y-1 pt-1 border-t border-slate-700/50">
+                            <div className="text-[10px] space-y-1 pt-1 border-t border-zinc-800">
                               {citations.length > 0 && (
-                                <div className="flex items-center gap-2 text-slate-400">
+                                <div className="flex items-center gap-2 text-zinc-400">
                                   <span className="font-semibold">Citation Accuracy:</span>
                                   <span className={
                                     citationAccuracy >= 90 ? 'text-emerald-400' : 
@@ -407,17 +404,17 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
                                   }>
                                     {citationAccuracy}%
                                   </span>
-                                  <span className="text-slate-500">
+                                  <span className="text-zinc-500">
                                     ({validCitations.length}/{citations.length} valid)
                                   </span>
                                 </div>
                               )}
                               {chunks.length > 0 && (
-                                <div className="flex items-center gap-3 text-slate-400">
+                                <div className="flex items-center gap-3 text-zinc-400">
                                   <span>
                                     <span className="font-semibold">Citation Rate:</span>{' '}
                                     <span className="text-cyan-400">{citationRate}%</span>
-                                    <span className="text-slate-500 ml-1">
+                                    <span className="text-zinc-500 ml-1">
                                       ({citedChunks.length}/{chunks.length} chunks cited)
                                     </span>
                                   </span>
@@ -433,7 +430,7 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
                             errorStack: error.stack
                           })
                           return (
-                            <div className="text-[10px] text-red-400 pt-1 border-t border-slate-700/50">
+                            <div className="text-[10px] text-red-400 pt-1 border-t border-zinc-800">
                               Error calculating metrics: {error.message}
                             </div>
                           )
@@ -443,7 +440,7 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
                   )}
                 </div>
                 {msg.outputHash && (
-                  <div className="text-[10px] font-mono text-slate-600 shrink-0" title={`Output Hash: ${msg.outputHash}`}>
+                  <div className="text-[10px] font-mono text-zinc-600 shrink-0" title={`Output Hash: ${msg.outputHash}`}>
                     {msg.outputHash.slice(0, 6)}...
                   </div>
                 )}
@@ -451,24 +448,24 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
             </div>
           )
         })}
-        {loading && <div className="text-xs text-slate-500 animate-pulse">Atlas is thinking...</div>}
+        {loading && <div className="text-xs text-zinc-500 animate-pulse">Atlas is thinking...</div>}
         <div ref={bottomRef} />
           </>
         )}
       </div>
-      <form onSubmit={handleSubmit} className="flex gap-2 p-3 border-t border-slate-700">
+      <form onSubmit={handleSubmit} className="flex gap-2 p-3 border-t border-zinc-800">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Hey Atlas, how does X work?"
-          className="flex-1 px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+          className="flex-1 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition-colors"
           disabled={loading}
         />
         <button
           type="submit"
           disabled={loading}
-          className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-600 text-white text-sm font-medium rounded transition-colors"
+          className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 disabled:bg-zinc-700 text-zinc-950 text-sm font-semibold rounded-xl transition-colors"
         >
           Send
         </button>

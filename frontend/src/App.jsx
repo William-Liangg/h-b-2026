@@ -191,7 +191,7 @@ function Dashboard() {
       return (
         <div className="flex-1 flex min-h-0">
           {/* Left sidebar: Step-by-step walkthrough */}
-          <div className="w-72 border-r border-slate-700 flex flex-col min-h-0 bg-slate-900/50">
+          <div className="w-72 border-r border-zinc-800 flex flex-col min-h-0">
             <OnboardingWalkthrough
               repoId={repoId}
               onHighlight={setHighlightedFiles}
@@ -199,7 +199,7 @@ function Dashboard() {
             />
           </div>
           {/* Center: Obsidian-style onboarding graph */}
-          <div className="flex-1 border-r border-slate-700">
+          <div className="flex-1 border-r border-zinc-800">
             <OnboardingGraph
               steps={onboardingSteps}
               highlightedFiles={highlightedFiles}
@@ -208,7 +208,7 @@ function Dashboard() {
           </div>
           {/* Right sidebar: Chat + Source */}
           <div className="w-[400px] flex flex-col min-h-0">
-            <div className="flex-1 min-h-0 border-b border-slate-700">
+            <div className="flex-1 min-h-0 border-b border-zinc-800">
               <ChatPanel
                 repoId={repoId}
                 onCitations={handleCitations}
