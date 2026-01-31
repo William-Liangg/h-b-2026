@@ -306,11 +306,8 @@ export default function OnboardingGraph({ steps, onNodeClick, highlightedFiles }
           style={{ backgroundColor: '#0f0a1f' }}
         />
         <Controls
-          style={{
-            background: '#1e1b4b',
-            border: '1px solid #4c1d95',
-            borderRadius: '8px',
-          }}
+          className="!bg-[#09090b] !border !border-zinc-800 !rounded-lg !shadow-lg [&>button]:!bg-[#09090b] [&>button]:!border-zinc-800 [&>button]:!fill-zinc-500 [&>button:hover]:!fill-zinc-300"
+          style={{}}
         />
       </ReactFlow>
 
