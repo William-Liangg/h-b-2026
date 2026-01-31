@@ -1,6 +1,7 @@
 """Atlas — FastAPI backend."""
 
 import json
+import logging
 import os
 from contextlib import asynccontextmanager
 from typing import Generator
@@ -10,6 +11,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+
+log = logging.getLogger(__name__)
 
 from auth import get_current_user, router as auth_router
 from config import CLONE_DIR, IMPORTANCE_THRESHOLD
@@ -260,7 +263,22 @@ def onboarding(repo_id: str, _user: User = Depends(get_current_user)):
     data = _load_graph(repo_id)
     if not data:
         raise HTTPException(404, "Repo not found. Ingest it first.")
-    return {"steps": data.get("onboarding_path", [])}
+    
+    # Check if onboarding_path exists
+    onboarding_path = data.get("onboarding_path", [])
+    
+    # If missing but we have file_analyses and edges, try to generate it
+    if not onboarding_path and data.get("file_analyses") and data.get("edges"):
+        try:
+            onboarding_path = generate_onboarding_path(data["file_analyses"], data["edges"])
+            # Save the generated path back to cache
+            data["onboarding_path"] = onboarding_path
+            _save_graph(repo_id, data)
+        except Exception as e:
+            log.warning(f"Failed to generate onboarding path: {e}")
+            onboarding_path = []
+    
+    return {"steps": onboarding_path}
 
 
 @app.get("/github/repos")

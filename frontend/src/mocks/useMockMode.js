@@ -1,6 +1,6 @@
 // Toggle this to switch between mock and real API calls
 // Set to true for fast frontend iteration, false for real API
-export const USE_MOCKS = true
+export const USE_MOCKS = false
 
 // Helper to log when mocks are active
 if (USE_MOCKS) {

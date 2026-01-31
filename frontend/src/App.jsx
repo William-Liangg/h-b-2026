@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth, authHeaders } from './auth'
 import IngestBar from './components/IngestBar'
@@ -86,11 +86,21 @@ function Dashboard() {
               } else if (eventType === 'error') {
                 setIngestError(data.message)
               } else if (eventType === 'done') {
-                // Ingest complete — fetch graph and transition
+                // Ingest complete — fetch graph and onboarding path
                 const graphRes = await fetch(`/graph/${data.repo_id}`, { headers: authHeaders() })
                 const graphJson = await graphRes.json()
                 setGraphData(graphJson)
                 setRepoId(data.repo_id)
+                
+                // Fetch onboarding path
+                fetch(`/onboarding/${data.repo_id}`, { headers: authHeaders() })
+                  .then(async (res) => {
+                    if (res.ok) {
+                      const onboardingData = await res.json()
+                      setOnboardingSteps(onboardingData.steps || [])
+                    }
+                  })
+                  .catch(err => console.error('Failed to fetch onboarding path:', err))
               }
             } catch { /* ignore parse errors */ }
             eventType = ''
@@ -135,6 +145,31 @@ function Dashboard() {
       setSourceView(data)
     }
     setHighlightedFiles([citation.file])
+  }, [repoId])
+
+  // Load graph and onboarding data when repoId changes (e.g., on page refresh)
+  useEffect(() => {
+    if (!repoId || USE_MOCKS) return
+
+    // Load graph data
+    fetch(`/graph/${repoId}`, { headers: authHeaders() })
+      .then(async (res) => {
+        if (res.ok) {
+          const graphJson = await res.json()
+          setGraphData(graphJson)
+        }
+      })
+      .catch(err => console.error('Failed to fetch graph:', err))
+
+    // Load onboarding path
+    fetch(`/onboarding/${repoId}`, { headers: authHeaders() })
+      .then(async (res) => {
+        if (res.ok) {
+          const onboardingData = await res.json()
+          setOnboardingSteps(onboardingData.steps || [])
+        }
+      })
+      .catch(err => console.error('Failed to fetch onboarding path:', err))
   }, [repoId])
 
   // Three possible screens: repo chooser, ingest progress, or main workspace

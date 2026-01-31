@@ -128,6 +128,29 @@ function generateLayout(steps, expandedNodes) {
     const isExpanded = expandedNodes.has(mainNodeId)
     const y = index * mainNodeSpacing
 
+    // Generate subNodes from available data if not provided
+    let subNodes = step.subNodes || []
+    if (subNodes.length === 0) {
+      // Generate subNodes from key_exports, responsibilities, or dependencies
+      const exports = step.key_exports || []
+      const responsibilities = step.responsibilities || []
+      const dependencies = step.dependencies || []
+      
+      // Create subNodes from key exports (functions, classes, etc.)
+      exports.slice(0, 5).forEach(exp => {
+        subNodes.push({ label: exp, type: 'Export' })
+      })
+      
+      // Add some responsibilities as concepts
+      if (subNodes.length < 5 && responsibilities.length > 0) {
+        responsibilities.slice(0, 3).forEach(resp => {
+          if (!subNodes.find(s => s.label === resp)) {
+            subNodes.push({ label: resp, type: 'Responsibility' })
+          }
+        })
+      }
+    }
+
     // Main node (vertical linked list)
     nodes.push({
       id: mainNodeId,
@@ -139,7 +162,7 @@ function generateLayout(steps, expandedNodes) {
         stepNumber: index + 1,
         isMainNode: true,
         isExpanded,
-        hasChildren: step.subNodes && step.subNodes.length > 0,
+        hasChildren: subNodes.length > 0,
         responsibilities: step.responsibilities,
         key_exports: step.key_exports,
       },
@@ -161,10 +184,10 @@ function generateLayout(steps, expandedNodes) {
     }
 
     // Sub-nodes when expanded
-    if (isExpanded && step.subNodes) {
-      step.subNodes.forEach((subNode, subIndex) => {
+    if (isExpanded && subNodes.length > 0) {
+      subNodes.forEach((subNode, subIndex) => {
         const subNodeId = `${mainNodeId}-sub-${subIndex}`
-        const subY = y + (subIndex - (step.subNodes.length - 1) / 2) * subNodeSpacing
+        const subY = y + (subIndex - (subNodes.length - 1) / 2) * subNodeSpacing
 
         nodes.push({
           id: subNodeId,
