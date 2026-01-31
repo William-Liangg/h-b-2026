@@ -21,6 +21,11 @@ EMBEDDING_BATCH_SIZE = 100
 EMBEDDING_MODEL = "text-embedding-3-small"
 CLAUDE_MODEL = "claude-sonnet-4-20250514"
 
+# Onboarding / importance scoring
+IMPORTANCE_THRESHOLD = 6          # files scoring >= this are "important"
+ANALYSIS_BATCH_SIZE = 12          # files per Claude call for analysis
+ANALYSIS_MAX_LINES = 150          # max lines to read per file for analysis
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 

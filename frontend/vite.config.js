@@ -10,6 +10,7 @@ export default defineConfig({
       '/github': 'http://localhost:8000',
       '/ingest': 'http://localhost:8000',
       '/graph': 'http://localhost:8000',
+      '/onboarding': 'http://localhost:8000',
       '/query': 'http://localhost:8000',
       '/source': 'http://localhost:8000',
     },

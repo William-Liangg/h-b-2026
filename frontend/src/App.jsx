@@ -2,10 +2,12 @@ import { useState, useCallback } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth, authHeaders } from './auth'
 import IngestBar from './components/IngestBar'
+import IngestProgress from './components/IngestProgress'
 import RepoChooser from './components/RepoChooser'
 import GraphPanel from './components/GraphPanel'
 import ChatPanel from './components/ChatPanel'
 import SourcePanel from './components/SourcePanel'
+import OnboardingWalkthrough from './components/OnboardingWalkthrough'
 import LoginPage from './pages/LoginPage'
 import SignupPage from './pages/SignupPage'
 
@@ -16,15 +18,76 @@ function Dashboard() {
   const [highlightedFiles, setHighlightedFiles] = useState([])
   const [sourceView, setSourceView] = useState(null)
   const [manualUrl, setManualUrl] = useState('')
-  const [ingestingUrl, setIngestingUrl] = useState(null)
 
-  const handleIngested = useCallback(async (id) => {
-    setIngestingUrl(null)
-    setRepoId(id)
-    const res = await fetch(`/graph/${id}`, { headers: authHeaders() })
-    const data = await res.json()
-    setGraphData(data)
-  }, [])
+  // Ingest progress state
+  const [ingesting, setIngesting] = useState(false)
+  const [ingestStep, setIngestStep] = useState('')
+  const [ingestMessage, setIngestMessage] = useState('')
+  const [ingestError, setIngestError] = useState('')
+
+  const startIngest = useCallback(async (url) => {
+    if (!url.trim() || ingesting) return
+    setIngesting(true)
+    setIngestStep('cloning')
+    setIngestMessage('Starting...')
+    setIngestError('')
+
+    try {
+      const res = await fetch('/ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ url: url.trim() }),
+      })
+
+      if (!res.ok) {
+        // Non-streaming error (e.g. 401)
+        const err = await res.json().catch(() => ({ detail: 'Ingest failed' }))
+        setIngestError(err.detail || 'Ingest failed')
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() // keep incomplete line in buffer
+
+        let eventType = ''
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            eventType = line.slice(7).trim()
+          } else if (line.startsWith('data: ') && eventType) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              if (eventType === 'progress') {
+                setIngestStep(data.step)
+                setIngestMessage(data.message)
+              } else if (eventType === 'error') {
+                setIngestError(data.message)
+              } else if (eventType === 'done') {
+                // Ingest complete — fetch graph and transition
+                const graphRes = await fetch(`/graph/${data.repo_id}`, { headers: authHeaders() })
+                const graphJson = await graphRes.json()
+                setGraphData(graphJson)
+                setRepoId(data.repo_id)
+              }
+            } catch { /* ignore parse errors */ }
+            eventType = ''
+          }
+        }
+      }
+    } catch (err) {
+      setIngestError(err.message || 'Network error')
+    } finally {
+      setIngesting(false)
+    }
+  }, [ingesting])
 
   const handleCitations = useCallback((citations) => {
     setHighlightedFiles(citations.map(c => c.file))
@@ -52,27 +115,38 @@ function Dashboard() {
     setHighlightedFiles([citation.file])
   }, [repoId])
 
-  return (
-    <div className="h-screen flex flex-col">
-      <div className="flex items-center bg-slate-800 border-b border-slate-700">
-        <IngestBar onIngested={handleIngested} autoUrl={ingestingUrl} />
-        <div className="flex items-center gap-3 px-4">
-          <span className="text-xs text-slate-400">{email}</span>
-          <button onClick={logout} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
-            Logout
-          </button>
-        </div>
-      </div>
-      {repoId ? (
+  // Three possible screens: repo chooser, ingest progress, or main workspace
+  const renderContent = () => {
+    // Screen 1: Ingesting — full-screen progress
+    if (ingesting || ingestError) {
+      return (
+        <IngestProgress
+          currentStep={ingestStep}
+          message={ingestMessage}
+          error={ingestError}
+        />
+      )
+    }
+
+    // Screen 2: Main workspace (post-ingest)
+    if (repoId) {
+      return (
         <div className="flex-1 flex min-h-0">
-          <div className="w-1/2 border-r border-slate-700">
+          <div className="w-72 border-r border-slate-700 flex flex-col min-h-0 bg-slate-900/50">
+            <OnboardingWalkthrough
+              repoId={repoId}
+              onHighlight={setHighlightedFiles}
+              onNodeClick={handleNodeClick}
+            />
+          </div>
+          <div className="flex-1 border-r border-slate-700">
             <GraphPanel
               data={graphData}
               highlightedFiles={highlightedFiles}
               onNodeClick={handleNodeClick}
             />
           </div>
-          <div className="w-1/2 flex flex-col min-h-0">
+          <div className="w-[400px] flex flex-col min-h-0">
             <div className="flex-1 min-h-0 border-b border-slate-700">
               <ChatPanel
                 repoId={repoId}
@@ -87,38 +161,56 @@ function Dashboard() {
             )}
           </div>
         </div>
-      ) : (
-        <div className="flex-1 overflow-auto px-8 py-10">
-          <div className="max-w-4xl mx-auto space-y-8">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-200 mb-4">Choose a repo</h2>
-              <RepoChooser onSelect={(url) => { setManualUrl(url); setIngestingUrl(url) }} />
-            </div>
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-700" /></div>
-              <div className="relative flex justify-center"><span className="bg-slate-900 px-3 text-sm text-slate-500">or paste a URL</span></div>
-            </div>
-            <form
-              onSubmit={(e) => { e.preventDefault(); if (manualUrl.trim()) setIngestingUrl(manualUrl.trim()) }}
-              className="flex gap-3"
-            >
-              <input
-                type="text"
-                value={manualUrl}
-                onChange={(e) => setManualUrl(e.target.value)}
-                placeholder="https://github.com/owner/repo"
-                className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-              />
-              <button
-                type="submit"
-                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium rounded transition-colors"
-              >
-                Analyze
-              </button>
-            </form>
+      )
+    }
+
+    // Screen 3: Repo chooser (default after login)
+    return (
+      <div className="flex-1 overflow-auto px-8 py-10">
+        <div className="max-w-4xl mx-auto space-y-8">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-200 mb-4">Choose a repo</h2>
+            <RepoChooser onSelect={(url) => startIngest(url)} />
           </div>
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-700" /></div>
+            <div className="relative flex justify-center"><span className="bg-slate-900 px-3 text-sm text-slate-500">or paste a URL</span></div>
+          </div>
+          <form
+            onSubmit={(e) => { e.preventDefault(); if (manualUrl.trim()) startIngest(manualUrl.trim()) }}
+            className="flex gap-3"
+          >
+            <input
+              type="text"
+              value={manualUrl}
+              onChange={(e) => setManualUrl(e.target.value)}
+              placeholder="https://github.com/owner/repo"
+              className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+            />
+            <button
+              type="submit"
+              className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium rounded transition-colors"
+            >
+              Analyze
+            </button>
+          </form>
         </div>
-      )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-screen flex flex-col">
+      <div className="flex items-center bg-slate-800 border-b border-slate-700">
+        <IngestBar onIngest={startIngest} disabled={ingesting} />
+        <div className="flex items-center gap-3 px-4">
+          <span className="text-xs text-slate-400">{email}</span>
+          <button onClick={logout} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
+            Logout
+          </button>
+        </div>
+      </div>
+      {renderContent()}
     </div>
   )
 }

@@ -3,17 +3,19 @@
 import json
 import os
 from contextlib import asynccontextmanager
+from typing import Generator
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from auth import get_current_user, router as auth_router
-from config import CLONE_DIR
+from config import CLONE_DIR, IMPORTANCE_THRESHOLD
 from database import User, init_db
 from embeddings import query_chunks, store_chunks
-from llm import generate_answer
+from llm import analyze_repo_files, generate_answer, generate_onboarding_path
 from parser import chunk_file, clone_repo, extract_edges, repo_id_from_url, walk_files
 
 # Disk-backed graph cache: repo_id -> {files, edges, root}
@@ -81,6 +83,9 @@ class GraphNode(BaseModel):
     id: str
     label: str
     extension: str
+    summary: str = ""
+    importance_score: int = 0
+    onboarding_reason: str = ""
 
 class GraphEdge(BaseModel):
     source: str
@@ -93,37 +98,77 @@ class GraphResponse(BaseModel):
 
 # --- Endpoints ---
 
-@app.post("/ingest", response_model=IngestResponse)
+def _sse(event: str, data: dict) -> str:
+    """Format a server-sent event."""
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+@app.post("/ingest")
 def ingest(req: IngestRequest, _user: User = Depends(get_current_user)):
-    """Clone a repo, chunk files, embed, and store."""
-    try:
-        repo_id, local_path = clone_repo(req.url)
-    except Exception as e:
-        raise HTTPException(400, f"Failed to clone repo: {e}")
+    """Clone a repo, chunk files, embed, AI-analyze — streamed via SSE."""
 
-    files = walk_files(local_path)
-    all_chunks = []
-    for f in files:
-        all_chunks.extend(chunk_file(local_path, f))
+    def generate() -> Generator[str, None, None]:
+        # Step 1: Clone
+        yield _sse("progress", {"step": "cloning", "message": "Cloning repository..."})
+        try:
+            repo_id, local_path = clone_repo(req.url)
+        except Exception as e:
+            yield _sse("error", {"message": f"Failed to clone repo: {e}"})
+            return
 
-    try:
-        store_chunks(repo_id, all_chunks)
-    except Exception as e:
-        raise HTTPException(500, f"Embedding/storage failed: {e}")
+        # Step 2: Scan files
+        yield _sse("progress", {"step": "scanning", "message": "Scanning files..."})
+        files = walk_files(local_path)
+        all_chunks = []
+        for f in files:
+            all_chunks.extend(chunk_file(local_path, f))
+        yield _sse("progress", {"step": "scanning", "message": f"Found {len(files)} files, {len(all_chunks)} chunks"})
 
-    # Cache graph data to disk (survives reloads)
-    edges = extract_edges(local_path, files)
-    _save_graph(repo_id, {"files": files, "edges": edges, "root": local_path})
+        # Step 3: Embed
+        yield _sse("progress", {"step": "embedding", "message": "Generating embeddings..."})
+        try:
+            store_chunks(repo_id, all_chunks)
+        except Exception as e:
+            yield _sse("error", {"message": f"Embedding failed: {e}"})
+            return
 
-    return IngestResponse(repo_id=repo_id, files=len(files), chunks=len(all_chunks))
+        # Step 4: Dependency graph
+        yield _sse("progress", {"step": "graphing", "message": "Mapping dependencies..."})
+        edges = extract_edges(local_path, files)
+
+        # Step 5: AI analysis
+        yield _sse("progress", {"step": "analyzing", "message": "AI is analyzing files... this takes 30–60 seconds"})
+        try:
+            file_analyses = analyze_repo_files(files, local_path)
+        except Exception:
+            file_analyses = {}
+
+        # Step 6: Onboarding path
+        yield _sse("progress", {"step": "pathing", "message": "Generating onboarding path..."})
+        try:
+            onboarding_path = generate_onboarding_path(file_analyses, edges)
+        except Exception:
+            onboarding_path = []
+
+        _save_graph(repo_id, {
+            "files": files,
+            "edges": edges,
+            "root": local_path,
+            "file_analyses": file_analyses,
+            "onboarding_path": onboarding_path,
+        })
+
+        # Final result
+        yield _sse("done", {"repo_id": repo_id, "files": len(files), "chunks": len(all_chunks)})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @app.get("/graph/{repo_id}", response_model=GraphResponse)
-def graph(repo_id: str, _user: User = Depends(get_current_user)):
+def graph(repo_id: str, important_only: bool = True, _user: User = Depends(get_current_user)):
     """Return file nodes + import edges for the repo."""
     data = _load_graph(repo_id)
     if not data:
-        # Try to rebuild from the cloned repo on disk
         repo_path = os.path.join(CLONE_DIR, repo_id)
         if os.path.isdir(repo_path):
             files = walk_files(repo_path)
@@ -133,12 +178,36 @@ def graph(repo_id: str, _user: User = Depends(get_current_user)):
         else:
             raise HTTPException(404, "Repo not found. Ingest it first.")
 
-    nodes = []
-    for f in data["files"]:
-        ext = os.path.splitext(f)[1]
-        nodes.append(GraphNode(id=f, label=os.path.basename(f), extension=ext))
+    analyses = data.get("file_analyses", {})
+    file_list = data["files"]
 
-    edges = [GraphEdge(source=e["source"], target=e["target"]) for e in data["edges"]]
+    # Filter to important files if analyses exist and flag is set
+    if important_only and analyses:
+        file_list = [f for f in file_list if analyses.get(f, {}).get("importance_score", 0) >= IMPORTANCE_THRESHOLD]
+        if not file_list:
+            # Fallback: show top 15 by score
+            scored = sorted(data["files"], key=lambda f: analyses.get(f, {}).get("importance_score", 0), reverse=True)
+            file_list = scored[:15]
+
+    file_set = set(file_list)
+    nodes = []
+    for f in file_list:
+        ext = os.path.splitext(f)[1]
+        a = analyses.get(f, {})
+        nodes.append(GraphNode(
+            id=f,
+            label=os.path.basename(f),
+            extension=ext,
+            summary=a.get("summary", ""),
+            importance_score=a.get("importance_score", 0),
+            onboarding_reason=a.get("onboarding_reason", ""),
+        ))
+
+    edges = [
+        GraphEdge(source=e["source"], target=e["target"])
+        for e in data["edges"]
+        if e["source"] in file_set and e["target"] in file_set
+    ]
     return GraphResponse(nodes=nodes, edges=edges)
 
 
@@ -163,6 +232,15 @@ def query(req: QueryRequest, _user: User = Depends(get_current_user)):
         citations=[Citation(**c) for c in result["citations"]],
         chunks=result["chunks"],
     )
+
+
+@app.get("/onboarding/{repo_id}")
+def onboarding(repo_id: str, _user: User = Depends(get_current_user)):
+    """Return the guided onboarding walkthrough path."""
+    data = _load_graph(repo_id)
+    if not data:
+        raise HTTPException(404, "Repo not found. Ingest it first.")
+    return {"steps": data.get("onboarding_path", [])}
 
 
 @app.get("/github/repos")

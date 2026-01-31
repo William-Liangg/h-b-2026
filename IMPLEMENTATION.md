@@ -1,7 +1,67 @@
-# Atlas — RAG-Powered GitHub Repository Analyzer
+# Atlas — Developer Onboarding Tool
 
-## What It Does
-User pastes a GitHub URL → backend clones and processes the repo → frontend displays an interactive file/dependency graph (React Flow) + chat interface where users ask "Hey Atlas, how does X work?" → returns grounded answers with file:line citations that highlight nodes in the graph.
+## Product Vision
+
+Atlas is an **onboarding tool for new developers** joining a codebase. Instead of reading every file or relying on stale documentation, a new team member ingests a GitHub repo and receives an AI-powered guided walkthrough of the most important parts — entry points, core logic, config, and key modules — presented in a logical reading order through an interactive dependency graph.
+
+## Core Features
+
+### 1. Importance Scoring & Filtering
+
+Not every file matters for onboarding. Atlas uses Claude to analyze each file and assign an **importance score (0–10)**:
+
+| Score | Category | Examples |
+|-------|----------|---------|
+| 9–10 | Entry points | `main.py`, `index.ts`, `app.py`, `server.py` |
+| 7–8 | Core logic | API routes, state management, key models |
+| 5–6 | Shared utilities | Middleware, helpers used across many files |
+| 3–4 | Isolated features | Individual components, secondary helpers |
+| 1–2 | Low priority | Tests, type declarations, minor configs |
+| 0 | Skip | Empty files, lockfiles, auto-generated code |
+
+The graph view filters to files scoring **≥ 6** by default (configurable via `IMPORTANCE_THRESHOLD`). Higher-scored nodes appear larger and bolder.
+
+### 2. AI-Generated File Summaries
+
+During ingest, Claude analyzes each file (first 150 lines) and produces:
+
+- **Summary**: 1–2 sentence description of what the file does
+- **Responsibilities**: 2–4 key things the file handles
+- **Key exports**: Important functions, classes, or modules
+- **Onboarding reason**: Why a new developer should (or shouldn't) read this file
+
+Summaries appear as **hover tooltips** on graph nodes and in the walkthrough panel.
+
+### 3. Guided Onboarding Walkthrough
+
+After ingest, Atlas presents a **linked-list reading path** through the codebase:
+
+1. Start at the entry point (e.g., `main.py`)
+2. Follow to core dependencies (routers, models, config)
+3. End at utilities and helpers
+
+The walkthrough panel includes:
+- Current file name, AI summary, and why it matters
+- Key responsibilities and exports
+- Previous/Next navigation with step dots
+- Progress bar showing walkthrough completion
+- Each step highlights the corresponding node in the graph
+
+### 4. Semantic Dependency Graph
+
+The graph view shows only important files with:
+- Color-coded nodes by file extension
+- Import/dependency edges filtered to visible nodes
+- Node size and weight scaled by importance score
+- Hover tooltips with AI summaries and scores
+- Click-to-view full source code
+
+### 5. RAG-Powered Q&A (Ask Atlas)
+
+Users can ask natural-language questions about the codebase:
+- Semantic search over embedded code chunks
+- Claude generates grounded answers with `[file:start-end]` citations
+- Clicking citations opens the source viewer and highlights graph nodes
 
 ## Architecture
 
@@ -10,103 +70,108 @@ frontend (React + Vite :5173)  →  proxy  →  backend (FastAPI :8000)
                                                 ├── GitPython (clone)
                                                 ├── OpenAI (embeddings)
                                                 ├── ChromaDB (vector store)
-                                                └── Anthropic Claude (answers)
+                                                └── Anthropic Claude (answers + analysis)
 ```
 
-## Backend (`backend/`)
+## Technical Approach
 
-### `config.py`
-All constants: paths, skip dirs, code extensions, chunk params, model names, API keys from env.
-- `CLONE_DIR`: `.repos/` — where cloned repos live
-- `CHROMA_DIR`: `.chroma/` — persistent ChromaDB storage
-- `SKIP_DIRS`: node_modules, .git, build, dist, __pycache__, etc.
-- `CODE_EXTENSIONS`: .py, .js, .ts, .tsx, .go, .rs, .java, etc.
-- Chunking: 80 lines per chunk, 10-line overlap
-- Embedding batch size: 100 (rate limit safety)
+### Ingest Pipeline
 
-### `parser.py`
-- `repo_id_from_url(url)` — SHA256 hash truncated to 12 chars
-- `clone_repo(url)` — shallow clone via GitPython, returns (repo_id, path)
-- `walk_files(root)` — os.walk filtered by SKIP_DIRS and CODE_EXTENSIONS
-- `chunk_file(root, rel_path)` — splits file into overlapping line-based chunks with metadata (file, start_line, end_line, text)
-- `extract_edges(root, files)` — regex-based import parsing for Python, JS/TS, Go, Rust, Java, Ruby. Resolves relative imports against actual file set. Returns `[{source, target}]` edge list.
-- Import resolution tries: direct path, with extensions (.py/.ts/.tsx/.js/.jsx), index files, Python dotted paths
+```
+POST /ingest
+  └─ clone_repo()                  # Shallow clone via GitPython
+  └─ walk_files()                  # Filter by extensions, skip build dirs
+  └─ chunk_file()                  # 80-line chunks, 10-line overlap
+  └─ store_chunks()                # OpenAI embeddings → ChromaDB
+  └─ extract_edges()               # Regex-based import parsing
+  └─ analyze_repo_files()          # Claude: importance scores + summaries
+  └─ generate_onboarding_path()    # Claude: ordered reading path
+  └─ _save_graph()                 # Persist all data to disk cache
+```
 
-### `embeddings.py`
-- Uses OpenAI `text-embedding-3-small`
-- ChromaDB persistent client with cosine similarity
-- `store_chunks(repo_id, chunks)` — embeds all chunks in batches of 100, upserts to Chroma in batches of 5000
-- `query_chunks(repo_id, query, n_results=8)` — embeds query, retrieves top-k chunks with metadata
+### How Files Are Scored
 
-### `llm.py`
-- Uses Anthropic Claude Sonnet (`claude-sonnet-4-20250514`)
-- System prompt instructs Atlas to ground answers in provided chunks and cite as `[file:start-end]`
-- `generate_answer(question, chunks)` — formats chunks as numbered context, calls Claude, extracts citations via regex from response
+`analyze_repo_files()` in `backend/llm.py`:
+- Reads first 150 lines of each file (token-efficient)
+- Batches 12 files per Claude API call
+- System prompt enforces structured JSON output with scoring criteria
+- Fallback: assigns score 3 and "Analysis unavailable" if a batch fails
 
-### `main.py` — FastAPI App
-Four endpoints:
-1. **`POST /ingest`** — `{url}` → clone, walk, chunk, embed, store, cache graph → `{repo_id, files, chunks}`
-2. **`GET /graph/{repo_id}`** — returns `{nodes: [{id, label, extension}], edges: [{source, target}]}`
-3. **`POST /query`** — `{repo_id, question}` → RAG retrieve → Claude answer → `{answer, citations, chunks}`
-4. **`GET /source/{repo_id}?file=...&start=...&end=...`** — returns source lines for the viewer
+### How the Onboarding Path Is Determined
 
-Graph data cached in-memory dict `_graph_cache[repo_id]`.
-CORS fully open for dev. Vite proxy handles routing in dev mode.
+`generate_onboarding_path()` in `backend/llm.py`:
+- Filters to files with importance score ≥ threshold
+- Provides Claude with file summaries + dependency edge list
+- Claude returns an ordered reading path with reasons for each position
+- Fallback: sorts by importance descending if Claude call fails
 
-## Frontend (`frontend/`)
+### How Summaries Are Generated
 
-### Tech: React + Vite + Tailwind CSS v4 + @xyflow/react
+Each file analysis includes structured data returned as JSON from Claude:
+```json
+{
+  "importance_score": 9,
+  "summary": "FastAPI application entry point that defines all API endpoints.",
+  "responsibilities": ["Request routing", "Middleware setup", "Endpoint definitions"],
+  "key_exports": ["app", "ingest", "query"],
+  "onboarding_reason": "Start here — this is where the app boots and all routes are defined."
+}
+```
 
-### `App.jsx` — Main Orchestrator
-State: `repoId`, `graphData`, `highlightedFiles`, `sourceView`
-- `handleIngested(id)` — after ingest, fetches graph data
-- `handleCitations(citations)` — highlights cited files in graph
-- `handleNodeClick(fileId)` — fetches full file source for viewer
-- `handleCitationClick(citation)` — fetches cited line range + highlights node
+### Storage
 
-Layout: full-height flex column
-- Top: IngestBar
-- Below: 50/50 split — left: GraphPanel, right: ChatPanel + SourcePanel
+All analysis data persists in `.graph_cache/{repo_id}.json` alongside existing graph data — no additional database tables required.
 
-### `components/IngestBar.jsx`
-URL input + "Analyze" button. Shows loading state and result summary (X files, Y chunks).
+### API Endpoints
 
-### `components/GraphPanel.jsx`
-- Converts API nodes to React Flow nodes with grid layout grouped by directory
-- Color-coded by file extension (Python=blue, JS=yellow, TS=blue, Go=cyan, Rust=orange, etc.)
-- Highlighted files get cyan glow + scale(1.1) via boxShadow
-- Click node → triggers source viewer
+| Endpoint | Description |
+|----------|-------------|
+| `POST /ingest` | Clone, chunk, embed, analyze, generate path |
+| `GET /graph/{repo_id}?important_only=true` | Filtered graph with summaries |
+| `GET /onboarding/{repo_id}` | Ordered walkthrough steps |
+| `POST /query` | RAG Q&A with citations |
+| `GET /source/{repo_id}?file=&start=&end=` | Source code viewer |
+| `GET /github/repos` | User's GitHub repositories |
 
-### `components/ChatPanel.jsx`
-- Message list with user/assistant roles
-- Parses `[file:start-end]` citations in answers into clickable buttons
-- Clicking citation → opens source viewer + highlights graph node
-- Loading state with "Atlas is thinking..." pulse animation
+### Frontend Layout (Post-Ingest)
 
-### `components/SourcePanel.jsx`
-- Shows file path + line range in header
-- Renders source lines with line numbers
-- Close button to dismiss
+```
+┌───────────────────────────────────────────────────────────┐
+│ ATLAS │ [URL input] [Analyze]               │ user│Logout │
+├────────────┬──────────────────────┬───────────────────────┤
+│ Walkthrough │    Graph Panel       │     Chat Panel        │
+│ (w-72)      │    (flex-1)          │     (w-400)           │
+│             │                      │                       │
+│ Step 3/12   │  [important nodes    │  Ask Atlas...         │
+│ main.py     │   with hover         │                       │
+│ Summary...  │   tooltips]          │                       │
+│ Reason...   │                      │                       │
+│             │                      ├───────────────────────┤
+│ [Prev][Next]│                      │  Source Panel          │
+└─────────────┴──────────────────────┴───────────────────────┘
+```
 
 ## Running
 
 ```bash
 # Backend
 cd backend && pip install -r requirements.txt
-export OPENAI_API_KEY=... ANTHROPIC_API_KEY=...
-uvicorn main:app --reload --port 8000
+# Set env vars in .env.local: OPENAI_API_KEY, ANTHROPIC_API_KEY, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+python run.py
 
 # Frontend
 cd frontend && npm install && npm run dev
 ```
 
 ## Key Design Decisions
-- **Shallow clone** (`depth=1`) to minimize clone time and disk usage
-- **Line-based chunking** (not token-based) for precise file:line citations
-- **Overlap of 10 lines** ensures functions split across chunk boundaries still have context
-- **Cosine similarity** in ChromaDB for semantic search
-- **8 chunks retrieved** per query — enough context without overwhelming Claude's prompt
-- **Regex-based import parsing** — no AST needed, works across languages, fast
-- **In-memory graph cache** — graph data is lightweight, avoids re-parsing on every request
-- **Vite dev proxy** — no CORS config needed in development
-- **Citation format `[file:start-end]`** — parseable by both frontend and humans
+
+- **Importance filtering** — graph shows ~30-50% of files, not the full tree
+- **Claude for analysis** — semantic understanding, not just file tree heuristics
+- **Batch processing** — 12 files per Claude call balances throughput vs token limits
+- **First 150 lines** — captures imports, class definitions, and module-level code without excessive tokens
+- **Graph cache storage** — no new DB tables; JSON file per repo is simple and works
+- **Guided path** — Claude understands dependency flow better than a simple sort
+- **Hover tooltips** — summaries visible without leaving the graph view
+- **Shallow clone** (`depth=1`) — minimizes clone time and disk usage
+- **Line-based chunking** — enables precise file:line citations
+- **Cosine similarity** — ChromaDB semantic search for Q&A

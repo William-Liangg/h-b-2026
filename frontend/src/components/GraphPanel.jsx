@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from 'react'
+import { useMemo, useCallback, useState } from 'react'
 import { ReactFlow, Background, Controls, useNodesState, useEdgesState } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
@@ -22,7 +22,6 @@ const EXT_COLORS = {
 }
 
 function layoutNodes(apiNodes) {
-  // Simple grid layout grouped by directory
   const dirs = {}
   apiNodes.forEach((n) => {
     const parts = n.id.split('/')
@@ -36,18 +35,29 @@ function layoutNodes(apiNodes) {
   for (const dir of Object.keys(dirs).sort()) {
     const files = dirs[dir]
     files.forEach((n, row) => {
+      const score = n.importance_score || 0
+      const size = Math.max(10, score)
+      const padding = score >= 8 ? '10px 16px' : '6px 12px'
+      const fontSize = score >= 8 ? 13 : 12
       nodes.push({
         id: n.id,
-        position: { x: col * 220, y: row * 60 },
-        data: { label: n.label },
+        position: { x: col * 240, y: row * 70 },
+        data: {
+          label: n.label,
+          summary: n.summary || '',
+          importance_score: score,
+          onboarding_reason: n.onboarding_reason || '',
+          fullPath: n.id,
+        },
         style: {
           background: EXT_COLORS[n.extension] || '#475569',
           color: '#fff',
-          border: 'none',
-          borderRadius: 6,
-          padding: '6px 12px',
-          fontSize: 12,
-          fontWeight: 500,
+          border: score >= 8 ? '2px solid rgba(255,255,255,0.3)' : 'none',
+          borderRadius: 8,
+          padding,
+          fontSize,
+          fontWeight: score >= 8 ? 600 : 500,
+          opacity: score >= 6 ? 1 : 0.7,
         },
       })
     })
@@ -56,7 +66,30 @@ function layoutNodes(apiNodes) {
   return nodes
 }
 
+function Tooltip({ node, position }) {
+  if (!node) return null
+  const { summary, importance_score, onboarding_reason, fullPath } = node.data
+  if (!summary) return null
+
+  return (
+    <div
+      className="absolute z-50 max-w-xs p-3 bg-slate-800 border border-slate-600 rounded-lg shadow-xl text-xs pointer-events-none"
+      style={{ left: position.x + 12, top: position.y - 8 }}
+    >
+      <div className="font-medium text-cyan-400 mb-1 truncate">{fullPath}</div>
+      <div className="text-slate-300 mb-2">{summary}</div>
+      {onboarding_reason && (
+        <div className="text-slate-500 italic">{onboarding_reason}</div>
+      )}
+      <div className="mt-1 text-slate-600">Importance: {importance_score}/10</div>
+    </div>
+  )
+}
+
 export default function GraphPanel({ data, highlightedFiles, onNodeClick }) {
+  const [hoveredNode, setHoveredNode] = useState(null)
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
+
   const initialNodes = useMemo(() => (data ? layoutNodes(data.nodes) : []), [data])
   const initialEdges = useMemo(
     () =>
@@ -75,7 +108,6 @@ export default function GraphPanel({ data, highlightedFiles, onNodeClick }) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
 
-  // Update node highlighting
   useMemo(() => {
     if (!data) return
     const highlighted = new Set(highlightedFiles)
@@ -96,22 +128,35 @@ export default function GraphPanel({ data, highlightedFiles, onNodeClick }) {
     [onNodeClick]
   )
 
+  const handleNodeMouseEnter = useCallback((event, node) => {
+    const bounds = event.currentTarget.closest('.react-flow').getBoundingClientRect()
+    setMousePos({ x: event.clientX - bounds.left, y: event.clientY - bounds.top })
+    setHoveredNode(node)
+  }, [])
+
+  const handleNodeMouseLeave = useCallback(() => {
+    setHoveredNode(null)
+  }, [])
+
   if (!data) return <div className="h-full flex items-center justify-center text-slate-600">No graph data</div>
 
   return (
-    <div className="h-full">
+    <div className="h-full relative">
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
+        onNodeMouseEnter={handleNodeMouseEnter}
+        onNodeMouseLeave={handleNodeMouseLeave}
         fitView
         proOptions={{ hideAttribution: true }}
       >
         <Background color="#1e293b" gap={20} />
         <Controls />
       </ReactFlow>
+      <Tooltip node={hoveredNode} position={mousePos} />
     </div>
   )
 }
