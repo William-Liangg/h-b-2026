@@ -8,6 +8,7 @@ import GraphPanel from './components/GraphPanel'
 import ChatPanel from './components/ChatPanel'
 import SourcePanel from './components/SourcePanel'
 import OnboardingWalkthrough from './components/OnboardingWalkthrough'
+import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import SignupPage from './pages/SignupPage'
 
@@ -215,18 +216,14 @@ function Dashboard() {
   )
 }
 
-function ProtectedRoute({ children }) {
-  const { isAuthenticated } = useAuth()
-  return isAuthenticated ? children : <Navigate to="/login" replace />
-}
-
 function AppRoutes() {
   const { isAuthenticated } = useAuth()
   return (
     <Routes>
-      <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />} />
-      <Route path="/signup" element={isAuthenticated ? <Navigate to="/" replace /> : <SignupPage />} />
-      <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/login" element={isAuthenticated ? <Navigate to="/app" replace /> : <LoginPage />} />
+      <Route path="/signup" element={isAuthenticated ? <Navigate to="/app" replace /> : <SignupPage />} />
+      <Route path="/app" element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" replace />} />
+      <Route path="/" element={isAuthenticated ? <Navigate to="/app" replace /> : <LandingPage />} />
     </Routes>
   )
 }

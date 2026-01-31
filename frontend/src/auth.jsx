@@ -9,7 +9,7 @@ function getInitialAuth() {
   if (urlToken && urlEmail) {
     localStorage.setItem('atlas_token', urlToken)
     localStorage.setItem('atlas_email', urlEmail)
-    window.history.replaceState({}, '', '/')
+    window.history.replaceState({}, '', '/app')
     return { token: urlToken, email: urlEmail }
   }
   return {
