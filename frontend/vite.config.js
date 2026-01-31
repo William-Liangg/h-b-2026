@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/auth': 'http://localhost:8000',
+      '/github': 'http://localhost:8000',
       '/ingest': 'http://localhost:8000',
       '/graph': 'http://localhost:8000',
       '/query': 'http://localhost:8000',

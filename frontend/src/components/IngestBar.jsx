@@ -1,21 +1,22 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { authHeaders } from '../auth'
 
-export default function IngestBar({ onIngested }) {
+export default function IngestBar({ onIngested, autoUrl }) {
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
+  const lastAutoUrl = useRef(null)
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!url.trim()) return
+  const doIngest = async (targetUrl) => {
+    if (!targetUrl.trim()) return
+    setUrl(targetUrl)
     setLoading(true)
     setStatus('Cloning & indexing...')
     try {
       const res = await fetch('/ingest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify({ url: targetUrl.trim() }),
       })
       if (!res.ok) {
         const err = await res.json()
@@ -29,6 +30,18 @@ export default function IngestBar({ onIngested }) {
     } finally {
       setLoading(false)
     }
+  }
+
+  useEffect(() => {
+    if (autoUrl && autoUrl !== lastAutoUrl.current) {
+      lastAutoUrl.current = autoUrl
+      doIngest(autoUrl)
+    }
+  }, [autoUrl])
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    doIngest(url)
   }
 
   return (

@@ -4,6 +4,7 @@ import json
 import os
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -162,6 +163,34 @@ def query(req: QueryRequest, _user: User = Depends(get_current_user)):
         citations=[Citation(**c) for c in result["citations"]],
         chunks=result["chunks"],
     )
+
+
+@app.get("/github/repos")
+def github_repos(user: User = Depends(get_current_user)):
+    """Fetch the authenticated user's GitHub repositories."""
+    if not user.github_access_token:
+        raise HTTPException(400, "No GitHub token. Please log in with GitHub.")
+    resp = httpx.get(
+        "https://api.github.com/user/repos",
+        headers={"Authorization": f"Bearer {user.github_access_token}", "Accept": "application/vnd.github+json"},
+        params={"sort": "updated", "per_page": 50, "affiliation": "owner,collaborator,organization_member"},
+    )
+    if resp.status_code != 200:
+        raise HTTPException(502, "Failed to fetch repos from GitHub")
+    repos = resp.json()
+    return [
+        {
+            "full_name": r["full_name"],
+            "name": r["name"],
+            "description": r.get("description") or "",
+            "html_url": r["html_url"],
+            "clone_url": r["clone_url"],
+            "updated_at": r["updated_at"],
+            "language": r.get("language") or "",
+            "private": r["private"],
+        }
+        for r in repos
+    ]
 
 
 @app.get("/source/{repo_id}")

@@ -105,7 +105,7 @@ def github_redirect():
     url = (
         f"https://github.com/login/oauth/authorize"
         f"?client_id={GITHUB_CLIENT_ID}"
-        f"&scope=user:email"
+        f"&scope=user:email,repo"
     )
     return RedirectResponse(url)
 
@@ -159,8 +159,10 @@ def github_callback(code: str, db: Session = Depends(get_db)):
         else:
             user = User(email=primary_email, github_id=github_id)
             db.add(user)
-        db.commit()
-        db.refresh(user)
+    # Always update the access token so API calls use a fresh token
+    user.github_access_token = access_token
+    db.commit()
+    db.refresh(user)
 
     token = create_token(user.id, user.email)
     from urllib.parse import urlencode
