@@ -55,7 +55,9 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
           content: data.answer, 
           citations: data.citations,
           chunks: data.chunks, // Store chunks for display
-          outputHash: data.output_hash // Store hash for determinism display
+          outputHash: data.output_hash, // Store hash for determinism display
+          citationValidation: data.citation_validation, // Citation accuracy metrics
+          retrievalMetrics: data.retrieval_metrics, // Retrieval quality metrics
         },
       ])
       onCitations?.(data.citations || [])
@@ -184,22 +186,112 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
                     {isUser ? 'You' : 'Atlas'}:
                   </span>{' '}
                   <span className="whitespace-pre-wrap">{renderContent(msg.content, msg.citations)}</span>
-                  {!isUser && msg.chunks && msg.chunks.length > 0 && (
-                    <div className="mt-2">
+                  {!isUser && (msg.chunks?.length > 0 || msg.citations?.length > 0) && (
+                    <div className="mt-2 space-y-2">
                       <button
                         onClick={() => {
                           // Add or update chunks tab for this message
-                          setOpenChunksTabs(prev => ({
-                            ...prev,
-                            [i]: msg.chunks
-                          }))
-                          // Switch to this chunks tab
-                          setActiveTab(`chunks-${i}`)
+                          if (msg.chunks && msg.chunks.length > 0) {
+                            setOpenChunksTabs(prev => ({
+                              ...prev,
+                              [i]: msg.chunks
+                            }))
+                            // Switch to this chunks tab
+                            setActiveTab(`chunks-${i}`)
+                          }
                         }}
-                        className="text-xs px-2 py-1 bg-slate-700/50 hover:bg-slate-700 text-slate-300 rounded border border-slate-600 transition-colors"
+                        disabled={!msg.chunks || msg.chunks.length === 0}
+                        className="text-xs px-2 py-1 bg-slate-700/50 hover:bg-slate-700 disabled:bg-slate-800/30 disabled:text-slate-500 disabled:cursor-not-allowed text-slate-300 rounded border border-slate-600 transition-colors"
                       >
-                        {openChunksTabs[i] ? 'View' : 'Show'} Retrieved Chunks ({msg.chunks.length})
+                        {openChunksTabs[i] ? 'View' : 'Show'} Retrieved Chunks ({msg.chunks?.length || 0})
                       </button>
+                      {/* Simple metrics calculated on frontend */}
+                      {(() => {
+                        try {
+                          const chunks = msg.chunks || []
+                          const citations = msg.citations || []
+                          
+                          // Calculate citation accuracy: how many citations match retrieved chunks
+                          const chunkKeys = new Set(
+                            chunks.map(c => {
+                              const file = c?.file || c?.file_path || ''
+                              const start = c?.start_line || c?.start || 0
+                              const end = c?.end_line || c?.end || 0
+                              return `${file}:${start}-${end}`
+                            })
+                          )
+                          
+                          const validCitations = citations.filter(cit => {
+                            const file = cit?.file || cit?.file_path || ''
+                            const start = cit?.start_line || cit?.start || 0
+                            const end = cit?.end_line || cit?.end || 0
+                            const key = `${file}:${start}-${end}`
+                            return chunkKeys.has(key)
+                          })
+                          
+                          const citationAccuracy = citations.length > 0 
+                            ? Math.round((validCitations.length / citations.length) * 100)
+                            : 100
+                          
+                          // Calculate citation rate: how many chunks were cited
+                          const citedChunks = chunks.filter(chunk => {
+                            const chunkFile = chunk?.file || chunk?.file_path || ''
+                            const chunkStart = chunk?.start_line || chunk?.start || 0
+                            const chunkEnd = chunk?.end_line || chunk?.end || 0
+                            return citations.some(cit => {
+                              const citFile = cit?.file || cit?.file_path || ''
+                              const citStart = cit?.start_line || cit?.start || 0
+                              const citEnd = cit?.end_line || cit?.end || 0
+                              return citFile === chunkFile &&
+                                     citStart === chunkStart &&
+                                     citEnd === chunkEnd
+                            })
+                          })
+                          
+                          const citationRate = chunks.length > 0
+                            ? Math.round((citedChunks.length / chunks.length) * 100)
+                            : 0
+                          
+                          // Only show metrics if we have citations or chunks
+                          if (citations.length === 0 && chunks.length === 0) {
+                            return null
+                          }
+                          
+                          return (
+                            <div className="text-[10px] space-y-1 pt-1 border-t border-slate-700/50">
+                              {citations.length > 0 && (
+                                <div className="flex items-center gap-2 text-slate-400">
+                                  <span className="font-semibold">Citation Accuracy:</span>
+                                  <span className={
+                                    citationAccuracy >= 90 ? 'text-emerald-400' : 
+                                    citationAccuracy >= 70 ? 'text-yellow-400' : 
+                                    'text-red-400'
+                                  }>
+                                    {citationAccuracy}%
+                                  </span>
+                                  <span className="text-slate-500">
+                                    ({validCitations.length}/{citations.length} valid)
+                                  </span>
+                                </div>
+                              )}
+                              {chunks.length > 0 && (
+                                <div className="flex items-center gap-3 text-slate-400">
+                                  <span>
+                                    <span className="font-semibold">Citation Rate:</span>{' '}
+                                    <span className="text-cyan-400">{citationRate}%</span>
+                                    <span className="text-slate-500 ml-1">
+                                      ({citedChunks.length}/{chunks.length} chunks cited)
+                                    </span>
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        } catch (error) {
+                          console.error('Error calculating metrics:', error)
+                          return null
+                        }
+                      })()}
                     </div>
                   )}
                 </div>

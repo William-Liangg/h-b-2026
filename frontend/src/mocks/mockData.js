@@ -237,5 +237,11 @@ export const mockQueryResponse = {
       end_line: 169,
       text: '@router.get("/github")\ndef github_oauth():\n    """Redirect to GitHub OAuth."""\n    return RedirectResponse(\n        f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&scope=read:user user:email"\n    )\n\n@router.get("/github/callback")\nasync def github_callback(code: str, db: Session = Depends(get_db)):\n    """Handle GitHub OAuth callback."""\n    async with httpx.AsyncClient() as client:\n        # Exchange code for access token\n        token_resp = await client.post(\n            "https://github.com/login/oauth/access_token",\n            data={\n                "client_id": GITHUB_CLIENT_ID,\n                "client_secret": GITHUB_CLIENT_SECRET,\n                "code": code,\n            },\n            headers={"Accept": "application/json"},\n            timeout=10.0,\n        )\n        token_data = token_resp.json()\n        access_token = token_data.get("access_token")\n        \n        # Get user info\n        user_resp = await client.get(\n            "https://api.github.com/user",\n            headers={"Authorization": f"Bearer {access_token}"},\n            timeout=10.0,\n        )\n        user_data = user_resp.json()\n        \n        # Create or update user\n        user = db.query(User).filter(User.email == user_data["email"]).first()\n        if not user:\n            user = User(email=user_data["email"], github_username=user_data["login"])\n            db.add(user)\n            db.commit()\n        \n        token = create_token(user.id, user.email)\n        return {"access_token": token, "token_type": "bearer"}'
     },
+    {
+      file: 'auth.py',
+      start_line: 20,
+      end_line: 30,
+      text: 'from fastapi import Depends, HTTPException\nfrom fastapi.security import OAuth2PasswordBearer\nfrom sqlalchemy.orm import Session\nimport jwt\nfrom datetime import datetime, timedelta\n\nfrom config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRY_HOURS\nfrom database import User, get_db'
+    },
   ],
 }
