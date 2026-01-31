@@ -28,7 +28,12 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
       await new Promise((r) => setTimeout(r, 500)) // Simulate thinking
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: mockQueryResponse.answer, citations: mockQueryResponse.citations },
+        { 
+          role: 'assistant', 
+          content: mockQueryResponse.answer, 
+          citations: mockQueryResponse.citations,
+          chunks: mockQueryResponse.chunks, // Store chunks for display
+        },
       ])
       onCitations?.(mockQueryResponse.citations || [])
       setLoading(false)
