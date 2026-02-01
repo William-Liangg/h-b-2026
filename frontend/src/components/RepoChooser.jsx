@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { authHeaders } from '../auth'
+import { authHeaders, API_URL } from '../auth'
 import { USE_MOCKS } from '../mocks/useMockMode'
 import { mockRepos } from '../mocks/mockData'
 
@@ -54,7 +54,7 @@ export default function RepoChooser({ onSelect }) {
     }
 
     let cancelled = false
-    fetch('/github/repos', { headers: authHeaders() })
+    fetch(`${API_URL}/github/repos`, { headers: authHeaders() })
       .then(async (res) => {
         if (!res.ok) {
           const data = await res.json()

@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
-import { AuthProvider, useAuth, authHeaders } from "./auth";
+import { AuthProvider, useAuth, authHeaders, API_URL } from "./auth";
 import IngestBar from "./components/IngestBar";
 import IngestProgress from "./components/IngestProgress";
 import RepoChooser from "./components/RepoChooser";
@@ -58,7 +58,7 @@ function Dashboard() {
       setIngestError("");
 
       try {
-        const res = await fetch("/ingest", {
+        const res = await fetch(`${API_URL}/ingest`, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...authHeaders() },
           body: JSON.stringify({ url: url.trim() }),
@@ -99,7 +99,7 @@ function Dashboard() {
                   setIngestError(data.message);
                 } else if (eventType === "done") {
                   // Ingest complete — fetch graph and onboarding path
-                  const graphRes = await fetch(`/graph/${data.repo_id}`, {
+                  const graphRes = await fetch(`${API_URL}/graph/${data.repo_id}`, {
                     headers: authHeaders(),
                   });
                   const graphJson = await graphRes.json();
@@ -107,7 +107,7 @@ function Dashboard() {
                   setRepoId(data.repo_id);
 
                   // Fetch onboarding path
-                  fetch(`/onboarding/${data.repo_id}`, {
+                  fetch(`${API_URL}/onboarding/${data.repo_id}`, {
                     headers: authHeaders(),
                   })
                     .then(async (res) => {
@@ -151,7 +151,7 @@ function Dashboard() {
       }
 
       const res = await fetch(
-        `/source/${repoId}?file=${encodeURIComponent(fileId)}`,
+        `${API_URL}/source/${repoId}?file=${encodeURIComponent(fileId)}`,
         { headers: authHeaders() },
       );
       if (res.ok) {
@@ -166,7 +166,7 @@ function Dashboard() {
     async (citation) => {
       if (!repoId) return;
       const res = await fetch(
-        `/source/${repoId}?file=${encodeURIComponent(citation.file)}&start=${citation.start_line}&end=${citation.end_line}`,
+        `${API_URL}/source/${repoId}?file=${encodeURIComponent(citation.file)}&start=${citation.start_line}&end=${citation.end_line}`,
         { headers: authHeaders() },
       );
       if (res.ok) {
@@ -201,7 +201,7 @@ function Dashboard() {
     if (!repoId || USE_MOCKS) return;
 
     // Load graph data
-    fetch(`/graph/${repoId}`, { headers: authHeaders() })
+    fetch(`${API_URL}/graph/${repoId}`, { headers: authHeaders() })
       .then(async (res) => {
         if (res.ok) {
           const graphJson = await res.json();
@@ -211,7 +211,7 @@ function Dashboard() {
       .catch((err) => console.error("Failed to fetch graph:", err));
 
     // Load onboarding path
-    fetch(`/onboarding/${repoId}`, { headers: authHeaders() })
+    fetch(`${API_URL}/onboarding/${repoId}`, { headers: authHeaders() })
       .then(async (res) => {
         if (res.ok) {
           const onboardingData = await res.json();

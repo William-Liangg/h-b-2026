@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { authHeaders } from '../auth'
+import { authHeaders, API_URL } from '../auth'
 import { USE_MOCKS } from '../mocks/useMockMode'
 import { mockQueryResponse } from '../mocks/mockData'
 
@@ -54,7 +54,7 @@ List 3-5 of the most important related files. Be specific with file paths.`
     setLoading(true)
 
     try {
-      const res = await fetch('/query', {
+      const res = await fetch(`${API_URL}/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
@@ -245,7 +245,7 @@ List 3-5 of the most important related files. Be specific with file paths.`
     }
 
     try {
-      const res = await fetch('/query', {
+      const res = await fetch(`${API_URL}/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(requestBody),

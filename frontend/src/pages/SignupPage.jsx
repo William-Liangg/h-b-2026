@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { useAuth } from '../auth'
+import { useAuth, API_URL } from '../auth'
 import { Eye, EyeOff } from 'lucide-react'
 
 const GitHubIcon = () => (
@@ -23,7 +23,7 @@ export default function SignupPage() {
     setError('')
     setLoading(true)
     try {
-      const res = await fetch('/auth/signup', {
+      const res = await fetch(`${API_URL}/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -152,7 +152,7 @@ export default function SignupPage() {
 
             {/* GitHub OAuth */}
             <a
-              href="/auth/github"
+              href={`${API_URL}/auth/github`}
               className="flex items-center justify-center gap-2 w-full h-12 border border-zinc-700 rounded-lg text-sm font-medium text-zinc-300 hover:bg-zinc-800 hover:text-white hover:border-zinc-600 transition-colors"
             >
               <GitHubIcon />

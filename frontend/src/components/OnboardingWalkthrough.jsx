@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { authHeaders } from '../auth'
+import { authHeaders, API_URL } from '../auth'
 import { USE_MOCKS } from '../mocks/useMockMode'
 import { mockOnboardingSteps } from '../mocks/mockData'
 
@@ -21,7 +21,7 @@ export default function OnboardingWalkthrough({ repoId, onHighlight, onNodeClick
     }
 
     setLoading(true)
-    fetch(`/onboarding/${repoId}`, { headers: authHeaders() })
+    fetch(`${API_URL}/onboarding/${repoId}`, { headers: authHeaders() })
       .then(async (res) => {
         if (!res.ok) throw new Error((await res.json()).detail || 'Failed to load onboarding')
         return res.json()

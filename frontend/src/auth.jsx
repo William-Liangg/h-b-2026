@@ -1,6 +1,8 @@
 import { createContext, useContext, useState } from 'react'
 import { USE_MOCKS } from './mocks/useMockMode'
 
+export const API_URL = import.meta.env.VITE_API_URL || ''
+
 const AuthContext = createContext(null)
 
 function getInitialAuth() {
