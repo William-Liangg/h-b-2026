@@ -11,6 +11,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from config import (
+    FRONTEND_URL,
     GITHUB_CLIENT_ID,
     GITHUB_CLIENT_SECRET,
     JWT_ALGORITHM,
@@ -188,4 +189,4 @@ def github_callback(code: str, db: Session = Depends(get_db)):
 
     token = create_token(user.id, user.email)
     from urllib.parse import urlencode
-    return RedirectResponse(f"http://localhost:5173/app?{urlencode({'token': token, 'email': user.email})}")
+    return RedirectResponse(f"{FRONTEND_URL}/app?{urlencode({'token': token, 'email': user.email})}")
