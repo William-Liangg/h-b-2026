@@ -1,6 +1,7 @@
 """Atlas — FastAPI backend."""
 
 import json
+import logging
 import os
 from contextlib import asynccontextmanager
 from typing import Generator
@@ -11,12 +12,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+log = logging.getLogger(__name__)
+
 from auth import get_current_user, router as auth_router
 from config import CLONE_DIR, IMPORTANCE_THRESHOLD
 from database import User, init_db
 from embeddings import collection_has_data, query_chunks, store_chunks
 from llm import analyze_repo_files, generate_answer, generate_onboarding_path
 from parser import chunk_file, clone_repo, extract_edges, repo_id_from_url, walk_files
+from validation import hash_output, validate_deterministic
 
 # Disk-backed graph cache: repo_id -> {files, edges, root}
 _GRAPH_CACHE_DIR = os.path.join(os.path.dirname(__file__), ".graph_cache")
@@ -79,6 +83,7 @@ class QueryResponse(BaseModel):
     answer: str
     citations: list[Citation]
     chunks: list[dict]
+    output_hash: str | None = None  # SHA256 hash for deterministic validation
 
 class GraphNode(BaseModel):
     id: str
@@ -241,10 +246,14 @@ def query(req: QueryRequest, _user: User = Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(500, f"LLM generation failed: {e}")
 
+    # Generate deterministic hash for validation
+    output_hash = hash_output(result)
+
     return QueryResponse(
         answer=result["answer"],
         citations=[Citation(**c) for c in result["citations"]],
         chunks=result["chunks"],
+        output_hash=output_hash,
     )
 
 
@@ -254,7 +263,22 @@ def onboarding(repo_id: str, _user: User = Depends(get_current_user)):
     data = _load_graph(repo_id)
     if not data:
         raise HTTPException(404, "Repo not found. Ingest it first.")
-    return {"steps": data.get("onboarding_path", [])}
+    
+    # Check if onboarding_path exists
+    onboarding_path = data.get("onboarding_path", [])
+    
+    # If missing but we have file_analyses and edges, try to generate it
+    if not onboarding_path and data.get("file_analyses") and data.get("edges"):
+        try:
+            onboarding_path = generate_onboarding_path(data["file_analyses"], data["edges"])
+            # Save the generated path back to cache
+            data["onboarding_path"] = onboarding_path
+            _save_graph(repo_id, data)
+        except Exception as e:
+            log.warning(f"Failed to generate onboarding path: {e}")
+            onboarding_path = []
+    
+    return {"steps": onboarding_path}
 
 
 @app.get("/github/repos")
@@ -262,13 +286,20 @@ def github_repos(user: User = Depends(get_current_user)):
     """Fetch the authenticated user's GitHub repositories."""
     if not user.github_access_token:
         raise HTTPException(400, "No GitHub token. Please log in with GitHub.")
-    resp = httpx.get(
-        "https://api.github.com/user/repos",
-        headers={"Authorization": f"Bearer {user.github_access_token}", "Accept": "application/vnd.github+json"},
-        params={"sort": "updated", "per_page": 50, "affiliation": "owner,collaborator,organization_member"},
-    )
+    try:
+        resp = httpx.get(
+            "https://api.github.com/user/repos",
+            headers={"Authorization": f"Bearer {user.github_access_token}", "Accept": "application/vnd.github+json"},
+            params={"sort": "updated", "per_page": 50, "affiliation": "owner,collaborator,organization_member"},
+            timeout=10.0,  # 10 second timeout to prevent hanging
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(504, "GitHub API request timed out. Please try again.")
+    except httpx.RequestError as e:
+        raise HTTPException(502, f"Failed to connect to GitHub: {e}")
+    
     if resp.status_code != 200:
-        raise HTTPException(502, "Failed to fetch repos from GitHub")
+        raise HTTPException(502, f"Failed to fetch repos from GitHub: {resp.status_code}")
     repos = resp.json()
     return [
         {
@@ -300,3 +331,61 @@ def get_source(repo_id: str, file: str, start: int = 1, end: int = -1, _user: Us
     if end == -1:
         end = len(lines)
     return {"file": file, "start": start, "end": end, "lines": lines[start - 1 : end]}
+
+
+class DeterminismTestRequest(BaseModel):
+    repo_id: str
+    question: str
+    num_runs: int = 3  # Number of times to run the query
+
+
+@app.post("/query/test-determinism")
+def test_determinism(req: DeterminismTestRequest, user: User = Depends(get_current_user)):
+    """Test that RAG outputs are deterministic by running the same query multiple times."""
+    outputs = []
+    hashes = []
+    chunk_hashes = []  # Track if chunks are the same
+    
+    for i in range(req.num_runs):
+        try:
+            chunks = query_chunks(req.repo_id, req.question)
+            if not chunks:
+                return {"deterministic": False, "error": "No chunks found", "runs": []}
+            
+            # Hash the chunks to verify retrieval is deterministic
+            import hashlib
+            import json
+            # Sort chunks deterministically before hashing
+            chunk_ids = sorted([(c["file"], c["start_line"], c["end_line"]) for c in chunks])
+            chunk_data = json.dumps(chunk_ids, sort_keys=True)
+            chunk_hashes.append(hashlib.sha256(chunk_data.encode()).hexdigest())
+            
+            result = generate_answer(req.question, chunks)
+            output_hash = hash_output(result)
+            outputs.append(result)
+            hashes.append(output_hash)
+        except Exception as e:
+            return {"deterministic": False, "error": str(e), "runs": []}
+    
+    is_deterministic, error_msg = validate_deterministic(outputs)
+    
+    # Check if chunks are the same across runs
+    unique_chunk_hashes = len(set(chunk_hashes))
+    chunks_deterministic = unique_chunk_hashes == 1
+    
+    # Get the chunks from the first run (they should all be the same)
+    sample_chunks = outputs[0]["chunks"] if outputs else []
+    
+    return {
+        "deterministic": is_deterministic,
+        "error": error_msg,
+        "num_runs": req.num_runs,
+        "unique_hashes": len(set(hashes)),
+        "hashes": hashes,
+        "chunks_deterministic": chunks_deterministic,
+        "unique_chunk_hashes": unique_chunk_hashes,
+        "chunk_hashes": chunk_hashes,
+        "answers": [out["answer"] for out in outputs],  # Show actual answers for debugging
+        "chunks": sample_chunks,  # Show retrieved chunks (should be same across all runs)
+        "sample_output": outputs[0] if outputs else None,
+    }

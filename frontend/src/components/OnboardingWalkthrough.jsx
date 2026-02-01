@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { authHeaders } from '../auth'
+import { USE_MOCKS } from '../mocks/useMockMode'
+import { mockOnboardingSteps } from '../mocks/mockData'
 
 export default function OnboardingWalkthrough({ repoId, onHighlight, onNodeClick }) {
   const [steps, setSteps] = useState([])
@@ -9,6 +11,15 @@ export default function OnboardingWalkthrough({ repoId, onHighlight, onNodeClick
 
   useEffect(() => {
     if (!repoId) return
+
+    // MOCK MODE: Use mock onboarding steps
+    if (USE_MOCKS) {
+      setSteps(mockOnboardingSteps)
+      setCurrentStep(0)
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     fetch(`/onboarding/${repoId}`, { headers: authHeaders() })
       .then(async (res) => {
@@ -32,7 +43,7 @@ export default function OnboardingWalkthrough({ repoId, onHighlight, onNodeClick
 
   if (loading) {
     return (
-      <div className="p-4 text-sm text-slate-400 flex items-center gap-2">
+      <div className="p-4 text-sm text-zinc-400 flex items-center gap-2">
         <svg className="animate-spin h-4 w-4 text-cyan-400" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
@@ -43,24 +54,24 @@ export default function OnboardingWalkthrough({ repoId, onHighlight, onNodeClick
   }
 
   if (error) return <div className="p-4 text-sm text-red-400">{error}</div>
-  if (steps.length === 0) return <div className="p-4 text-sm text-slate-500">No onboarding path available.</div>
+  if (steps.length === 0) return <div className="p-4 text-sm text-zinc-500">No onboarding path available.</div>
 
   const step = steps[currentStep]
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-zinc-950" style={{ fontFamily: "'Manrope', sans-serif" }}>
       {/* Header */}
-      <div className="px-4 py-3 border-b border-slate-700 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-cyan-400">Onboarding Walkthrough</h3>
-        <span className="text-xs text-slate-500">
-          Step {currentStep + 1} of {steps.length}
+      <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
+        <h3 className="text-sm font-bold text-white">Onboarding</h3>
+        <span className="text-xs text-zinc-500">
+          {currentStep + 1} / {steps.length}
         </span>
       </div>
 
       {/* Progress bar */}
-      <div className="h-1 bg-slate-800">
+      <div className="h-1 bg-zinc-800">
         <div
-          className="h-full bg-cyan-500 transition-all duration-300"
+          className="h-full bg-gradient-to-r from-cyan-500 to-cyan-400 transition-all duration-300 rounded-full"
           style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
         />
       </div>
@@ -69,26 +80,26 @@ export default function OnboardingWalkthrough({ repoId, onHighlight, onNodeClick
       <div className="flex-1 overflow-auto p-4 space-y-3">
         <button
           onClick={() => onNodeClick?.(step.file)}
-          className="text-sm font-medium text-slate-200 hover:text-cyan-400 transition-colors text-left"
+          className="text-sm font-semibold text-white hover:text-cyan-400 transition-colors text-left"
         >
           {step.file}
         </button>
 
-        <div className="text-xs text-slate-400 leading-relaxed">{step.summary}</div>
+        <div className="text-xs text-zinc-400 leading-relaxed">{step.summary}</div>
 
         {step.reason && (
-          <div className="text-xs bg-cyan-950/30 border border-cyan-900/50 rounded px-3 py-2 text-cyan-300">
+          <div className="text-xs bg-cyan-950/30 border border-cyan-500/20 rounded-lg px-3 py-2 text-cyan-300">
             {step.reason}
           </div>
         )}
 
         {step.responsibilities?.length > 0 && (
-          <div className="space-y-1">
-            <div className="text-xs text-slate-500 font-medium">Key responsibilities:</div>
-            <ul className="text-xs text-slate-400 space-y-0.5">
+          <div className="space-y-1.5">
+            <div className="text-xs text-zinc-500 font-semibold">Key responsibilities</div>
+            <ul className="text-xs text-zinc-400 space-y-1">
               {step.responsibilities.map((r, i) => (
-                <li key={i} className="flex gap-1.5">
-                  <span className="text-slate-600 shrink-0">-</span>
+                <li key={i} className="flex gap-2">
+                  <span className="text-zinc-600 shrink-0">-</span>
                   <span>{r}</span>
                 </li>
               ))}
@@ -97,11 +108,11 @@ export default function OnboardingWalkthrough({ repoId, onHighlight, onNodeClick
         )}
 
         {step.key_exports?.length > 0 && (
-          <div className="space-y-1">
-            <div className="text-xs text-slate-500 font-medium">Key exports:</div>
-            <div className="flex flex-wrap gap-1">
+          <div className="space-y-1.5">
+            <div className="text-xs text-zinc-500 font-semibold">Key exports</div>
+            <div className="flex flex-wrap gap-1.5">
               {step.key_exports.map((e, i) => (
-                <span key={i} className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">
+                <span key={i} className="text-xs bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded-lg font-mono border border-zinc-700">
                   {e}
                 </span>
               ))}
@@ -116,7 +127,7 @@ export default function OnboardingWalkthrough({ repoId, onHighlight, onNodeClick
               key={i}
               onClick={() => setCurrentStep(i)}
               className={`w-2 h-2 rounded-full transition-colors ${
-                i === currentStep ? 'bg-cyan-400' : i < currentStep ? 'bg-cyan-800' : 'bg-slate-700'
+                i === currentStep ? 'bg-cyan-400' : i < currentStep ? 'bg-cyan-800' : 'bg-zinc-700'
               }`}
             />
           ))}
@@ -124,18 +135,18 @@ export default function OnboardingWalkthrough({ repoId, onHighlight, onNodeClick
       </div>
 
       {/* Navigation */}
-      <div className="px-4 py-3 border-t border-slate-700 flex gap-2">
+      <div className="px-4 py-3 border-t border-zinc-800 flex gap-2">
         <button
           onClick={() => setCurrentStep((s) => Math.max(0, s - 1))}
           disabled={currentStep === 0}
-          className="flex-1 px-3 py-1.5 text-xs font-medium rounded bg-slate-800 text-slate-400 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-zinc-800 text-zinc-400 hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
           Previous
         </button>
         <button
           onClick={() => setCurrentStep((s) => Math.min(steps.length - 1, s + 1))}
           disabled={currentStep === steps.length - 1}
-          className="flex-1 px-3 py-1.5 text-xs font-medium rounded bg-cyan-600 text-white hover:bg-cyan-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className="flex-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-cyan-500 text-zinc-950 hover:bg-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
           Next
         </button>

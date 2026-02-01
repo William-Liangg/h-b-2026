@@ -1,4 +1,5 @@
 import { createContext, useContext, useState } from 'react'
+import { USE_MOCKS } from './mocks/useMockMode'
 
 const AuthContext = createContext(null)
 
@@ -9,7 +10,7 @@ function getInitialAuth() {
   if (urlToken && urlEmail) {
     localStorage.setItem('atlas_token', urlToken)
     localStorage.setItem('atlas_email', urlEmail)
-    window.history.replaceState({}, '', '/')
+    window.history.replaceState({}, '', '/app')
     return { token: urlToken, email: urlEmail }
   }
   return {
@@ -37,8 +38,11 @@ export function AuthProvider({ children }) {
     setEmail(null)
   }
 
+  // MOCK MODE: Always authenticated
+  const isAuthenticated = USE_MOCKS || !!token
+
   return (
-    <AuthContext.Provider value={{ token, email, login, logout, isAuthenticated: !!token }}>
+    <AuthContext.Provider value={{ token, email: USE_MOCKS ? 'mock@example.com' : email, login, logout, isAuthenticated }}>
       {children}
     </AuthContext.Provider>
   )
