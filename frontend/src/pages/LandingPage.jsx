@@ -1,17 +1,16 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../auth'
 import { motion, useInView } from 'framer-motion'
 import { Menu, X, GitBranch, MessageSquare, BarChart3, Route, Brain, ArrowRight } from 'lucide-react'
 import './landing.css'
 
 const navItems = [
   { label: 'Features', href: '#features' },
-  { label: 'Pricing', href: '#pricing' },
-  { label: 'Docs', href: '#docs' },
-  { label: 'Blog', href: '#blog' },
 ]
 
 function Navbar() {
+  const { isAuthenticated } = useAuth()
   const [hoveredIndex, setHoveredIndex] = useState(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const navRef = useRef(null)
@@ -28,35 +27,18 @@ function Navbar() {
         className="relative flex items-center justify-between px-4 py-3 rounded-full bg-zinc-900/40 backdrop-blur-md border border-zinc-800"
       >
         {/* Logo */}
-        <a href="#" className="flex items-center gap-2">
+        <Link to={isAuthenticated ? '/app' : '/'} className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-cyan-400 flex items-center justify-center">
             <span className="text-zinc-950 font-bold text-sm">A</span>
           </div>
           <span className="font-semibold text-white hidden sm:block">ATLAS</span>
+        </Link>
+        <a
+          href="#features"
+          className="hidden md:block ml-2 px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
+        >
+          Features
         </a>
-
-        {/* Desktop Nav Items */}
-        <div className="hidden md:flex items-center gap-1 relative">
-          {navItems.map((item, index) => (
-            <a
-              key={item.label}
-              href={item.href}
-              className="relative px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
-              onMouseEnter={() => setHoveredIndex(index)}
-              onMouseLeave={() => setHoveredIndex(null)}
-            >
-              {hoveredIndex === index && (
-                <motion.div
-                  layoutId="navbar-hover"
-                  className="absolute inset-0 bg-zinc-800 rounded-full"
-                  initial={false}
-                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                />
-              )}
-              <span className="relative z-10">{item.label}</span>
-            </a>
-          ))}
-        </div>
 
         {/* CTA Buttons */}
         <div className="hidden md:flex items-center gap-3">
