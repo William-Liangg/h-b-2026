@@ -3,24 +3,216 @@ import { authHeaders } from '../auth'
 import { USE_MOCKS } from '../mocks/useMockMode'
 import { mockQueryResponse } from '../mocks/mockData'
 
-export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
+export default function ChatPanel({ repoId, onCitations, onCitationClick, selectedNode, onSelectedNodeProcessed, onAuxiliaryNodes }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('chat') // 'chat' or 'chunks-{messageIndex}'
   const [openChunksTabs, setOpenChunksTabs] = useState({}) // Map of messageIndex -> chunks data
+  const [nodeContext, setNodeContext] = useState(null) // Currently selected node context
   const bottomRef = useRef(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // When a node is selected from the graph, add it as context (don't auto-prompt)
+  useEffect(() => {
+    if (!selectedNode) return
+    setNodeContext(selectedNode)
+    onSelectedNodeProcessed?.()
+  }, [selectedNode, onSelectedNodeProcessed])
+
+  // Clear context handler
+  const clearNodeContext = () => {
+    setNodeContext(null)
+  }
+
+  // Find related files/nodes for the current context
+  const findRelatedNodes = async () => {
+    if (!nodeContext || loading) return
+
+    const structuredPrompt = `For the file "${nodeContext.file}", identify the most important related files in this codebase.
+
+IMPORTANT: Format your response as a structured list. For each related file, use EXACTLY this format:
+RELATED_FILE: <filepath> | <relationship_type> | <description>
+
+Where relationship_type is one of: imports, imported_by, calls, called_by, extends, implements, configures, tests, documents
+
+Example format:
+RELATED_FILE: src/utils/auth.js | imports | Provides authentication helpers used in this file
+RELATED_FILE: src/components/Header.jsx | imported_by | Consumes the exports from this file
+
+List 3-5 of the most important related files. Be specific with file paths.`
+
+    setMessages((prev) => [...prev, {
+      role: 'user',
+      content: `🔗 Finding related files for: ${nodeContext.file}`,
+      nodeContext: nodeContext.file,
+      isRelatedSearch: true
+    }])
+    setLoading(true)
+
+    try {
+      const res = await fetch('/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          repo_id: repoId,
+          question: structuredPrompt,
+          context: {
+            file: nodeContext.file,
+            summary: nodeContext.summary,
+            responsibilities: nodeContext.responsibilities,
+            key_exports: nodeContext.key_exports,
+            dependencies: nodeContext.dependencies,
+          }
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || 'Query failed')
+
+      // Parse structured response for related files
+      const auxNodes = parseStructuredRelatedFiles(data.answer, nodeContext.file)
+      if (auxNodes.length > 0) {
+        onAuxiliaryNodes?.(nodeContext.file, auxNodes)
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: data.answer,
+          citations: data.citations || [],
+          chunks: data.chunks,
+          outputHash: data.output_hash,
+          nodeContext: nodeContext.file,
+          addedNodes: auxNodes.length,
+        },
+      ])
+    } catch (err) {
+      setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${err.message}` }])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Parse structured RELATED_FILE: responses
+  const parseStructuredRelatedFiles = (answer, sourceFile) => {
+    const nodes = []
+    const seenFiles = new Set()
+
+    // Match RELATED_FILE: filepath | type | description
+    const pattern = /RELATED_FILE:\s*([^\s|]+)\s*\|\s*([^|]+)\s*\|\s*([^\n]+)/gi
+    let match
+
+    while ((match = pattern.exec(answer)) !== null) {
+      const filepath = match[1].trim()
+      const relationType = match[2].trim()
+      const description = match[3].trim()
+
+      if (!seenFiles.has(filepath) && filepath !== sourceFile) {
+        seenFiles.add(filepath)
+        nodes.push({
+          label: filepath.split('/').pop(), // filename only for display
+          type: relationType,
+          targetFile: filepath,
+          description: description
+        })
+      }
+    }
+
+    // Fallback: try to find any file paths mentioned if structured format wasn't used
+    if (nodes.length === 0) {
+      const fallbackPattern = /(?:^|\s)([a-zA-Z0-9_\-/.]+\/[a-zA-Z0-9_\-/.]+\.(py|js|ts|tsx|jsx|go|rs|java|cpp|c|h|json|yaml|yml|md))/gm
+      while ((match = fallbackPattern.exec(answer)) !== null) {
+        const filepath = match[1].trim()
+        if (!seenFiles.has(filepath) && filepath !== sourceFile && !filepath.startsWith('http')) {
+          seenFiles.add(filepath)
+          nodes.push({
+            label: filepath.split('/').pop(),
+            type: 'Related',
+            targetFile: filepath,
+            description: 'Mentioned in response'
+          })
+        }
+      }
+    }
+
+    return nodes.slice(0, 6) // Limit to 6 nodes
+  }
+
+  // Parse auxiliary nodes from Atlas response
+  const parseAuxiliaryNodes = (answer, sourceFile) => {
+    const nodes = []
+
+    // Look for file references in the answer
+    const filePattern = /(?:file|module|see|check|look at|refers to|imports?|depends on)\s*[`"]?([a-zA-Z0-9_\-/.]+\.(py|js|ts|tsx|jsx|go|rs|java|cpp|c|h))[`"]?/gi
+    let match
+    const seenFiles = new Set()
+
+    while ((match = filePattern.exec(answer)) !== null) {
+      const file = match[1]
+      if (!seenFiles.has(file) && file !== sourceFile) {
+        seenFiles.add(file)
+        nodes.push({
+          label: file.split('/').pop(),
+          type: 'Related',
+          targetFile: file,
+          description: 'Referenced in Atlas response'
+        })
+      }
+    }
+
+    // Look for concept patterns
+    const conceptPatterns = [
+      /(?:key concept|important pattern|architecture|design pattern)[:\s]+["']?([^"'\n.]+)["']?/gi,
+      /(?:uses?|implements?|follows?)\s+(?:the\s+)?([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)\s+(?:pattern|principle|approach)/gi,
+    ]
+
+    const seenConcepts = new Set()
+    for (const pattern of conceptPatterns) {
+      while ((match = pattern.exec(answer)) !== null) {
+        const concept = match[1].trim()
+        if (!seenConcepts.has(concept.toLowerCase()) && concept.length < 40) {
+          seenConcepts.add(concept.toLowerCase())
+          nodes.push({
+            label: concept,
+            type: 'Concept',
+            description: 'Key concept identified'
+          })
+        }
+      }
+    }
+
+    // Look for gotchas/warnings
+    const gotchaPattern = /(?:gotcha|warning|watch out|careful|note|important)[:\s]+([^.]+)/gi
+    while ((match = gotchaPattern.exec(answer)) !== null) {
+      const gotcha = match[1].trim()
+      if (gotcha.length > 10 && gotcha.length < 60) {
+        nodes.push({
+          label: gotcha.substring(0, 40) + (gotcha.length > 40 ? '...' : ''),
+          type: 'Warning',
+          description: gotcha
+        })
+        break // Only take first gotcha
+      }
+    }
+
+    return nodes.slice(0, 5) // Limit to 5 auxiliary nodes
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!input.trim() || loading) return
     const question = input.trim()
     setInput('')
-    setMessages((prev) => [...prev, { role: 'user', content: question }])
+
+    // Build user message with context indicator if present
+    const userMessage = nodeContext
+      ? { role: 'user', content: question, nodeContext: nodeContext.file }
+      : { role: 'user', content: question }
+    setMessages((prev) => [...prev, userMessage])
     setLoading(true)
 
     // MOCK MODE: Return mock response after brief delay
@@ -28,9 +220,9 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
       await new Promise((r) => setTimeout(r, 500)) // Simulate thinking
       setMessages((prev) => [
         ...prev,
-        { 
-          role: 'assistant', 
-          content: mockQueryResponse.answer, 
+        {
+          role: 'assistant',
+          content: mockQueryResponse.answer,
           citations: mockQueryResponse.citations,
           chunks: mockQueryResponse.chunks, // Store chunks for display
         },
@@ -40,11 +232,23 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
       return
     }
 
+    // Build request body with optional node context
+    const requestBody = { repo_id: repoId, question }
+    if (nodeContext) {
+      requestBody.context = {
+        file: nodeContext.file,
+        summary: nodeContext.summary,
+        responsibilities: nodeContext.responsibilities,
+        key_exports: nodeContext.key_exports,
+        dependencies: nodeContext.dependencies,
+      }
+    }
+
     try {
       const res = await fetch('/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ repo_id: repoId, question }),
+        body: JSON.stringify(requestBody),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || 'Query failed')
@@ -94,17 +298,26 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
       } else if (citations.length > 0) {
         console.log('✅ Using citations from backend:', citations)
       }
-      
+
+      // Extract auxiliary nodes from response when we have node context
+      if (nodeContext && data.answer) {
+        const auxNodes = parseAuxiliaryNodes(data.answer, nodeContext.file)
+        if (auxNodes.length > 0) {
+          onAuxiliaryNodes?.(nodeContext.file, auxNodes)
+        }
+      }
+
       setMessages((prev) => [
         ...prev,
-        { 
-          role: 'assistant', 
-          content: data.answer, 
+        {
+          role: 'assistant',
+          content: data.answer,
           citations: citations,
           chunks: data.chunks, // Store chunks for display
           outputHash: data.output_hash, // Store hash for determinism display
           citationValidation: data.citation_validation, // Citation accuracy metrics
           retrievalMetrics: data.retrieval_metrics, // Retrieval quality metrics
+          nodeContext: nodeContext?.file, // Track which node this response was about
         },
       ])
       onCitations?.(citations || [])
@@ -223,15 +436,28 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
           <>
             {messages.map((msg, i) => {
           const isUser = msg.role === 'user'
+          const hasNodeContext = !!msg.nodeContext
 
           return (
-            <div key={i} className={`text-sm ${isUser ? 'text-zinc-300' : 'text-zinc-100'}`}>
+            <div key={i} className={`text-sm ${isUser ? 'text-zinc-300' : 'text-zinc-100'} ${hasNodeContext ? 'border-l-2 border-purple-500 pl-3' : ''}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1">
+                  {hasNodeContext && isUser && (
+                    <div className="text-[10px] text-purple-400 mb-1 flex items-center gap-1">
+                      <span>📎</span>
+                      <span className="opacity-75">Context: {msg.nodeContext}</span>
+                    </div>
+                  )}
                   <span className={`font-semibold ${isUser ? 'text-cyan-400' : 'text-emerald-400'}`}>
                     {isUser ? 'You' : 'Atlas'}:
                   </span>{' '}
                   <span className="whitespace-pre-wrap">{renderContent(msg.content, msg.citations)}</span>
+                  {!isUser && msg.addedNodes > 0 && (
+                    <div className="mt-2 text-xs text-purple-400 bg-purple-500/10 border border-purple-500/30 rounded-lg px-2 py-1 inline-flex items-center gap-1">
+                      <span>✨</span>
+                      <span>Added {msg.addedNodes} node{msg.addedNodes > 1 ? 's' : ''} to graph</span>
+                    </div>
+                  )}
                   {!isUser && (msg.chunks?.length > 0 || msg.citations?.length > 0) && (
                     <div className="mt-2 space-y-2">
                       <button
@@ -453,12 +679,40 @@ export default function ChatPanel({ repoId, onCitations, onCitationClick }) {
           </>
         )}
       </div>
+      {/* Node Context Pill - shows when a node is selected */}
+      {nodeContext && (
+        <div className="px-3 py-2 border-t border-zinc-800 bg-zinc-900/50">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 flex items-center gap-2 text-xs">
+              <span className="text-purple-400">📎</span>
+              <span className="text-zinc-400">Context:</span>
+              <span className="text-purple-300 font-medium truncate">{nodeContext.file}</span>
+            </div>
+            <button
+              onClick={findRelatedNodes}
+              disabled={loading}
+              className="text-purple-400 hover:text-purple-300 disabled:text-zinc-600 text-xs px-2 py-1 rounded bg-purple-500/10 hover:bg-purple-500/20 disabled:bg-transparent border border-purple-500/30 hover:border-purple-500/50 disabled:border-zinc-700 transition-colors flex items-center gap-1"
+              title="Find related files and add them to the graph"
+            >
+              <span>🔗</span>
+              <span>Find related</span>
+            </button>
+            <button
+              onClick={clearNodeContext}
+              className="text-zinc-500 hover:text-zinc-300 text-xs px-1.5 py-0.5 rounded hover:bg-zinc-800 transition-colors"
+              title="Remove context"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="flex gap-2 p-3 border-t border-zinc-800">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Hey Atlas, how does X work?"
+          placeholder={nodeContext ? `Ask about ${nodeContext.file}...` : "Hey Atlas, how does X work?"}
           className="flex-1 px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition-colors"
           disabled={loading}
         />

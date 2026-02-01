@@ -25,6 +25,8 @@ function Dashboard() {
   const [sourceView, setSourceView] = useState(null)
   const [manualUrl, setManualUrl] = useState('')
   const [onboardingSteps, setOnboardingSteps] = useState([])
+  const [auxiliaryNodes, setAuxiliaryNodes] = useState({})
+  const [selectedNodeForAtlas, setSelectedNodeForAtlas] = useState(null)
 
   // Ingest progress state
   const [ingesting, setIngesting] = useState(false)
@@ -148,6 +150,24 @@ function Dashboard() {
     setHighlightedFiles([citation.file])
   }, [repoId])
 
+  // Handle node selection for Atlas exploration
+  const handleNodeSelect = useCallback((nodeData) => {
+    setSelectedNodeForAtlas(nodeData)
+  }, [])
+
+  // Handle auxiliary nodes response from Atlas
+  const handleAuxiliaryNodes = useCallback((fileId, nodes) => {
+    setAuxiliaryNodes(prev => ({
+      ...prev,
+      [fileId]: nodes
+    }))
+  }, [])
+
+  // Clear selected node after processing
+  const handleSelectedNodeProcessed = useCallback(() => {
+    setSelectedNodeForAtlas(null)
+  }, [])
+
   // Load graph and onboarding data when repoId changes (e.g., on page refresh)
   useEffect(() => {
     if (!repoId || USE_MOCKS) return
@@ -204,6 +224,8 @@ function Dashboard() {
               steps={onboardingSteps}
               highlightedFiles={highlightedFiles}
               onNodeClick={handleNodeClick}
+              onNodeSelect={handleNodeSelect}
+              auxiliaryNodes={auxiliaryNodes}
             />
           </div>
           {/* Right sidebar: Chat + Source */}
@@ -213,6 +235,9 @@ function Dashboard() {
                 repoId={repoId}
                 onCitations={handleCitations}
                 onCitationClick={handleCitationClick}
+                selectedNode={selectedNodeForAtlas}
+                onSelectedNodeProcessed={handleSelectedNodeProcessed}
+                onAuxiliaryNodes={handleAuxiliaryNodes}
               />
             </div>
             {sourceView && (
