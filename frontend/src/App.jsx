@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
 import { AuthProvider, useAuth, authHeaders } from './auth'
 import IngestBar from './components/IngestBar'
 import IngestProgress from './components/IngestProgress'
@@ -267,10 +267,10 @@ function Dashboard() {
     <div className="h-screen flex flex-col" style={{ fontFamily: "'Manrope', sans-serif" }}>
       <div className="flex items-center justify-between bg-zinc-950 border-b border-zinc-800 px-5 h-14">
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
+          <Link to="/app" className="flex items-center gap-2 hover:opacity-70 transition-opacity">
             <div className="w-7 h-7 rounded-lg bg-cyan-500 flex items-center justify-center text-zinc-950 font-bold text-sm">A</div>
-            <span className="text-white font-semibold text-sm">Atlas</span>
-          </div>
+            <span className="text-white font-semibold text-sm">ATLAS</span>
+          </Link>
           {repoId && (
             <button
               onClick={() => { setRepoId(null); setGraphData(null); setOnboardingSteps([]) }}
