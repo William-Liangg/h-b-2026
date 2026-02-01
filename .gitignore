@@ -36,3 +36,4 @@ backend/.env.local
 .env
 .env.local
 backend/service-account.json
+.vercel
