@@ -13,6 +13,11 @@ node_modules/
 # Repos
 backend/.repos/
 
+# Runtime artifacts
+backend/.chroma/
+backend/.graph_cache/
+backend/atlas.db
+
 # Build output
 dist/
 build/
